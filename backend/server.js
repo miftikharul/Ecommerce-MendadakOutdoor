@@ -14,6 +14,10 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 const productsFilePath = path.join(__dirname, 'products.json');
 const ordersFilePath = path.join(__dirname, 'orders.json');
 
+// API Key Binderbyte & Kota Asal Gudang
+const BINDERBYTE_API_KEY = 'MASUKKAN_BINDERBYTE_API_KEY_LU'; 
+const ORIGIN_CITY = 'bogor'; // Kota asal gudang Mendadak Outdoor
+
 // Helper membaca data JSON
 const readData = (filePath) => {
   if (!fs.existsSync(filePath)) return [];
@@ -69,7 +73,7 @@ app.post('/api/orders', (req, res) => {
     id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
     status: 'Diproses',
     trackingNumber: '-',
-    courier: 'JNE',
+    courier: req.body.courier || 'JNE',
     ...req.body,
   };
   orders.unshift(newOrder);
@@ -89,6 +93,46 @@ app.put('/api/orders/:id', (req, res) => {
   }
 
   res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan' });
+});
+
+// --- ENDPOINT LIVE TRACKING & CEK ONGKIR (BINDERBYTE) ---
+
+// 1. Endpoint Live Tracking Multi-Ekspedisi (JNE, J&T, Sentral, J&T Cargo)
+app.get('/api/track-resi', async (req, res) => {
+  const { courier, waybill } = req.query;
+  if (!courier || !waybill) {
+    return res.status(400).json({ success: false, message: 'Kurir dan Resi wajib diisi!' });
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.binderbyte.com/v1/track?api_key=${BINDERBYTE_API_KEY}&courier=${courier.toLowerCase()}&waybill=${waybill.trim()}`
+    );
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    console.error('Error tracking:', error);
+    return res.status(500).json({ success: false, message: 'Gagal terhubung ke API Kurir' });
+  }
+});
+
+// 2. Endpoint Cek Ongkir Otomatis
+app.get('/api/check-ongkir', async (req, res) => {
+  const { destination, weight, courier } = req.query; // weight dalam gram
+  if (!destination || !weight || !courier) {
+    return res.status(400).json({ success: false, message: 'Data tujuan, berat, dan kurir wajib diisi!' });
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.binderbyte.com/v1/cost?api_key=${BINDERBYTE_API_KEY}&origin=${ORIGIN_CITY}&destination=${destination.toLowerCase()}&weight=${weight}&courier=${courier.toLowerCase()}`
+    );
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    console.error('Error cek ongkir:', error);
+    return res.status(500).json({ success: false, message: 'Gagal menghitung ongkir' });
+  }
 });
 
 app.listen(PORT, () => {
