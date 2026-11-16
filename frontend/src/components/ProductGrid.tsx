@@ -1,135 +1,208 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Heart, Star, ShoppingBag, Zap } from 'lucide-react';
-import { useWishlist } from '@/context/WishlistContext';
-import { useCart } from '@/context/CartContext';
+
+interface ProductGridProps {
+  products?: any[];          // Untuk yang dikirim dari CatalogContainer
+  loading?: boolean;         // Opsional
+  paginatedProducts?: any[]; // Untuk yang dikirim dari page.tsx lama
+  sortedProducts?: any[];    // Opsional
+  totalPages?: number;       // Opsional
+  currentPage?: number;      // Opsional
+  setCurrentPage?: (page: number) => void; // Opsional
+}
 
 export default function ProductGrid({
   products,
   loading = false,
-}: {
-  products: any[];
-  loading?: boolean;
-}) {
+  paginatedProducts,
+  sortedProducts,
+  totalPages,
+  currentPage,
+  setCurrentPage,
+}: ProductGridProps) {
   const router = useRouter();
-  const { wishlist, toggleWishlist } = useWishlist();
-  const { addToCart } = useCart();
 
-  // Fungsi untuk Beli Langsung (tambah ke keranjang lalu langsung ke halaman cart)
-  const handleBuyNow = (product: any) => {
-    addToCart({ ...product, quantity: 1 });
-    router.push('/cart');
+  // Ambil data produk dari mana saja yang tersedia
+  const displayProducts = paginatedProducts || products || [];
+  const totalCount = sortedProducts ? sortedProducts.length : displayProducts.length;
+
+  // Fungsi Tambah ke Keranjang
+  const handleAddToCart = (product: any, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const existingCart = JSON.parse(localStorage.getItem('cart') || '[]');
+    const itemIndex = existingCart.findIndex((item: any) => item.id === product.id);
+
+    if (itemIndex > -1) {
+      existingCart[itemIndex].quantity += 1;
+    } else {
+      existingCart.push({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.images?.[0] ? `http://localhost:5000${product.images[0]}` : '',
+        quantity: 1,
+        variant: product.variant || 'Standard'
+      });
+    }
+
+    localStorage.setItem('cart', JSON.stringify(existingCart));
+    alert(`🛒 Berhasil memasukkan "${product.name}" ke keranjang!`);
+  };
+
+  // Fungsi Beli Langsung (Checkout)
+  const handleDirectCheckout = (product: any, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const buyNowItem = [{
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.images?.[0] ? `http://localhost:5000${product.images[0]}` : '',
+      quantity: 1,
+      variant: product.variant || 'Standard'
+    }];
+    localStorage.setItem('cart', JSON.stringify(buyNowItem));
+    router.push('/checkout');
+  };
+
+  // Fungsi Simpan ke Wishlist (Sudah diberi inisialisasi awal agar bebas error TS)
+  const handleToggleWishlist = (product: any, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const existingWishlist = JSON.parse(localStorage.getItem('wishlist') || '[]');
+    const isExist = existingWishlist.some((item: any) => item.id === product.id);
+
+    let updatedWishlist = [];
+    if (isExist) {
+      updatedWishlist = existingWishlist.filter((item: any) => item.id !== product.id);
+      alert(`💔 "${product.name}" dihapus dari Wishlist.`);
+    } else {
+      updatedWishlist = [...existingWishlist, product];
+      alert(`❤️ Berhasil menyimpan "${product.name}" ke Wishlist!`);
+    }
+
+    localStorage.setItem('wishlist', JSON.stringify(updatedWishlist));
   };
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-        {[1, 2, 3, 4].map((n) => (
-          <div key={n} className="bg-[#1C2541]/40 border border-slate-800 rounded-2xl p-4 h-72 animate-pulse" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!products || products.length === 0) {
-    return (
-      <div className="bg-[#1C2541]/30 border border-slate-800 rounded-2xl p-12 text-center text-slate-400 space-y-2">
-        <p className="font-bold text-base text-white">Belum ada produk yang ditemukan.</p>
-        <p className="text-xs">Coba pilih kategori lain di atas.</p>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="bg-[#1e293b] p-12 text-center rounded-xl border border-gray-800 shadow-sm">
+          <p className="text-gray-400 font-medium">Memuat data produk...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6">
-      {products.map((product) => {
-        const isWishlisted = wishlist?.some((item: any) => item.id === product.id);
+    <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-white">Katalog Peralatan Lapangan</h2>
+          <p className="text-sm text-gray-400">Pilih perlengkapan terbaik untuk kenyamanan petualanganmu.</p>
+        </div>
+        <span className="text-sm bg-[#1e293b] px-3 py-1 rounded-full border border-gray-800 text-gray-300 font-medium">
+          Menampilkan {displayProducts.length} dari {totalCount} produk
+        </span>
+      </div>
 
-        return (
-          <div
-            key={product.id}
-            className="group bg-[#1C2541]/60 hover:bg-[#1C2541] border border-slate-800 hover:border-orange-500/50 rounded-2xl p-4 transition-all duration-300 flex flex-col justify-between shadow-lg"
-          >
-            <div className="space-y-3">
-              {/* Box Foto Produk */}
-              <div className="relative aspect-video w-full rounded-xl bg-[#0B132B] border border-slate-800 overflow-hidden flex items-center justify-center">
-                <button
-                  type="button"
-                  onClick={() => toggleWishlist(product)}
-                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-[#0B132B]/80 hover:bg-[#0B132B] text-slate-300 hover:text-red-400 transition-colors z-10 backdrop-blur-sm cursor-pointer"
-                  title="Tambah ke Wishlist"
-                >
-                  <Heart className={`w-3.5 h-3.5 ${isWishlisted ? 'fill-red-500 text-red-500' : ''}`} />
-                </button>
+      {displayProducts.length === 0 ? (
+        <div className="bg-[#1e293b] p-12 text-center rounded-xl border border-gray-800 shadow-sm">
+          <p className="text-gray-400 font-medium">Tidak ada produk yang sesuai dengan filter atau pencarian.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {displayProducts.map((product: any) => (
+            <Link
+              href={`/product/${product.id}`}
+              key={product.id}
+              className="bg-[#1e293b] rounded-xl overflow-hidden shadow-sm hover:shadow-md transition border border-gray-800 flex flex-col group relative"
+            >
+              {/* Tombol Wishlist di pojok kanan atas gambar */}
+              <button 
+                onClick={(e) => handleToggleWishlist(product, e)}
+                className="absolute top-3 right-3 z-10 bg-[#0f172a]/80 hover:bg-[#0f172a] text-white p-2 rounded-full shadow border border-gray-700 transition cursor-pointer"
+                title="Simpan ke Wishlist"
+              >
+                ❤️
+              </button>
 
-                {product.image && product.image.trim() !== '' ? (
-                  <img
-                    src={product.image}
-                    alt={product.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <span className="text-slate-500 font-medium text-xs tracking-wide">
-                    [ Foto Produk ]
+              <div className="h-52 bg-[#0f172a] relative overflow-hidden">
+  {product.image ? (
+    <img
+      src={`http://localhost:5000${product.image}`}
+      alt={product.name}
+      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+    />
+  ) : (
+    <div className="flex items-center justify-center h-full text-gray-500 text-xs">
+      [ Tanpa Foto ]
+    </div>
+  )}
+</div>
+              
+              <div className="p-4 flex flex-col flex-grow justify-between">
+                <div>
+                  <h3 className="font-semibold text-white group-hover:text-orange-400 transition line-clamp-1 text-base">
+                    {product.name}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-1 line-clamp-2">
+                    {product.description || 'Peralatan outdoor berkualitas tinggi.'}
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-gray-800 flex items-center justify-between">
+                  <span className="font-extrabold text-orange-400 text-sm">
+                    Rp {Number(product.price).toLocaleString('id-ID')}
                   </span>
-                )}
-              </div>
+                  <span className="text-xs bg-[#0f172a] text-gray-300 px-2.5 py-1 rounded-md font-medium border border-gray-800">
+                    Stok: {product.stock ?? '10'}
+                  </span>
+                </div>
 
-              {/* Kategori & Rating */}
-              <div className="flex items-center justify-between text-xs pt-1">
-                <span className="text-[10px] font-extrabold text-orange-400 uppercase tracking-wider">
-                  {product.category}
-                </span>
-                <div className="flex items-center space-x-1 text-amber-400 font-bold text-[11px]">
-                  <Star className="w-3 h-3 fill-amber-400" />
-                  <span>{product.rating || 5.0}</span>
+                {/* Tombol Tambah ke Keranjang & Beli Langsung */}
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  <button 
+                    onClick={(e) => handleAddToCart(product, e)}
+                    className="bg-gray-800 hover:bg-gray-700 text-white text-xs font-semibold py-2 rounded-lg border border-gray-700 transition text-center cursor-pointer"
+                  >
+                    🛒 +Keranjang
+                  </button>
+                  <button 
+                    onClick={(e) => handleDirectCheckout(product, e)}
+                    className="bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold py-2 rounded-lg transition text-center shadow cursor-pointer"
+                  >
+                    ⚡ Beli Langsung
+                  </button>
                 </div>
               </div>
+            </Link>
+          ))}
+        </div>
+      )}
 
-              {/* Nama Produk */}
-              <h3 className="font-bold text-white text-xs sm:text-sm line-clamp-2 leading-snug group-hover:text-orange-400 transition-colors min-h-[36px]">
-                {product.name}
-              </h3>
-            </div>
-
-            {/* Bagian Harga & Tombol Aksi */}
-            <div className="pt-3 border-t border-slate-800/80 space-y-2 mt-3">
-              <div className="font-mono font-black text-white text-sm sm:text-base">
-                Rp {product.price?.toLocaleString('id-ID')}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {/* Tombol + Keranjang */}
-                <button
-                  type="button"
-                  onClick={() => addToCart({ ...product, quantity: 1 })}
-                  className="flex items-center justify-center space-x-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] py-2 rounded-xl transition-all border border-slate-700 cursor-pointer"
-                  title="Masukkan ke Keranjang"
-                >
-                  <ShoppingBag className="w-3.5 h-3.5 text-orange-400" />
-                  <span>Keranjang</span>
-                </button>
-
-                {/* Tombol Beli Langsung / Checkout Instan */}
-                <button
-                  type="button"
-                  onClick={() => handleBuyNow(product)}
-                  className="flex items-center justify-center space-x-1 bg-orange-500 hover:bg-orange-600 text-white font-bold text-[11px] py-2 rounded-xl transition-all shadow-md cursor-pointer"
-                  title="Beli Langsung"
-                >
-                  <Zap className="w-3.5 h-3.5 fill-white" />
-                  <span>Beli Cepat</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })}
+      {/* Pagination Controls */}
+      {totalPages && totalPages > 1 && setCurrentPage && (
+        <div className="flex justify-center items-center space-x-2 pt-8">
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+            <button
+              key={page}
+              onClick={() => setCurrentPage(page)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                currentPage === page
+                  ? 'bg-orange-600 text-white shadow'
+                  : 'bg-[#1e293b] text-gray-300 border border-gray-800 hover:bg-gray-800'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

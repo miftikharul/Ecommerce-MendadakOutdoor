@@ -1,195 +1,264 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Package, ShoppingCart, Plus, Trash2, ArrowLeft, Lock, LogOut, Image as ImageIcon, Upload } from 'lucide-react';
 
-function AdminContent() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-
-  const [activeTab, setActiveTab] = useState<'products' | 'orders'>('orders');
+export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'master'>('products');
   const [products, setProducts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
-  
-  const [form, setForm] = useState({ name: '', category: 'Tenda', price: '', weight: '1', description: '-', image: '' });
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [todayStr, setTodayStr] = useState('');
+
+  // Form Produk State
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [stock, setStock] = useState('');
+  const [variant, setVariant] = useState('Standard');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Form Master (Kategori & Brand)
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newBrandName, setNewBrandName] = useState('');
+
+  // Filter Pesanan State
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const fetchData = async () => {
+    try {
+      const [prodRes, ordRes, catRes, brandRes] = await Promise.all([
+        fetch('http://localhost:5000/api/products'),
+        fetch(`http://localhost:5000/api/orders?status=${statusFilter}&search=${searchQuery}`),
+        fetch('http://localhost:5000/api/categories').catch(() => ({ ok: false })),
+        fetch('http://localhost:5000/api/brands').catch(() => ({ ok: false }))
+      ]);
+      if (prodRes.ok) setProducts(await prodRes.json());
+      if (ordRes.ok) setOrders(await ordRes.json());
+      if (catRes.ok && 'json' in catRes) setCategories(await catRes.json());
+      if (brandRes.ok && 'json' in brandRes) setBrands(await brandRes.json());
+    } catch (error) {
+      console.error('Gagal memuat data admin:', error);
+    }
+  };
 
   useEffect(() => {
-    if (localStorage.getItem('admin_session') === 'authenticated') {
-      setIsLoggedIn(true);
-      loadData();
-    }
-  }, []);
+    setTodayStr(new Date().toISOString().slice(0, 10));
+    fetchData();
+  }, [statusFilter, searchQuery]);
 
-  const loadData = () => {
-    fetch('http://localhost:5000/api/products').then(res => res.json()).then(d => setProducts(d.success ? d.data : []));
-    fetch('http://localhost:5000/api/orders').then(res => res.json()).then(d => setOrders(d.success ? d.data : []));
-  };
-
-  const handleLogin = (e: React.FormEvent) => {
+  const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'admin' && password === 'admin123') {
-      localStorage.setItem('admin_session', 'authenticated');
-      setIsLoggedIn(true);
-      setErrorMsg('');
-      loadData();
-    } else {
-      setErrorMsg('Username atau password salah! (admin / admin123)');
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('description', description);
+      formData.append('price', price);
+      formData.append('stock', stock);
+      formData.append('variant', variant);
+      if (imageFile) formData.append('images', imageFile);
+
+      const url = editingId ? `http://localhost:5000/api/products/${editingId}` : 'http://localhost:5000/api/products';
+      const res = await fetch(url, { method: editingId ? 'PUT' : 'POST', body: formData });
+
+      if (res.ok) {
+        alert(editingId ? 'Produk diperbarui!' : 'Produk ditambahkan!');
+        setName(''); setDescription(''); setPrice(''); setStock(''); setImageFile(null); setEditingId(null);
+        fetchData();
+      } else {
+        alert('Gagal menyimpan produk.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) { alert('Maksimal ukuran file 2MB!'); return; }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        setForm(prev => ({ ...prev, image: base64 }));
-        setImagePreview(base64);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleAddProduct = (e: React.FormEvent) => {
+  const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    fetch('http://localhost:5000/api/products', {
+    if (!newCategoryName) return;
+    const res = await fetch('http://localhost:5000/api/categories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    }).then(res => res.json()).then(d => {
-      if (d.success) {
-        alert('Produk berhasil ditambahkan!');
-        setForm({ name: '', category: 'Tenda', price: '', weight: '1', description: '-', image: '' });
-        setImagePreview(null);
-        loadData();
-      }
+      body: JSON.stringify({ name: newCategoryName })
     });
-  };
-
-  const handleDeleteProduct = (id: string) => {
-    if (confirm('Hapus produk ini?')) {
-      fetch(`http://localhost:5000/api/products/${id}`, { method: 'DELETE' }).then(() => loadData());
+    if (res.ok) {
+      setNewCategoryName('');
+      fetchData();
+      alert('Kategori berhasil ditambahkan!');
     }
   };
 
-  const handleUpdateStatus = (id: string, status: string, curResi: string) => {
-    const trackingNumber = prompt('Masukkan No. Resi:', curResi !== '-' ? curResi : '');
-    fetch(`http://localhost:5000/api/orders/${id}`, {
-      method: 'PUT',
+  const handleAddBrand = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBrandName) return;
+    const res = await fetch('http://localhost:5000/api/brands', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, trackingNumber: trackingNumber || curResi }),
-    }).then(() => loadData());
+      body: JSON.stringify({ name: newBrandName })
+    });
+    if (res.ok) {
+      setNewBrandName('');
+      fetchData();
+      alert('Brand berhasil ditambahkan!');
+    }
   };
 
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-[#0B132B] text-slate-100 flex items-center justify-center p-4 font-sans">
-        <div className="w-full max-w-md bg-[#1C2541] p-8 rounded-3xl border border-slate-700/80 shadow-2xl space-y-6">
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 bg-orange-500/20 text-orange-400 rounded-2xl flex items-center justify-center mx-auto border border-orange-500/30">
-              <Lock className="w-6 h-6" />
-            </div>
-            <h1 className="text-2xl font-black text-white">Login Admin</h1>
-          </div>
-          {errorMsg && <div className="bg-red-500/20 text-red-400 text-xs p-3 rounded-xl text-center">{errorMsg}</div>}
-          <form onSubmit={handleLogin} className="space-y-4 text-xs">
-            <input type="text" placeholder="Username" required value={username} onChange={e => setUsername(e.target.value)} className="w-full bg-[#0B132B] border border-slate-700 rounded-xl px-4 py-3 text-white" />
-            <input type="password" placeholder="Password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-[#0B132B] border border-slate-700 rounded-xl px-4 py-3 text-white" />
-            <button type="submit" className="w-full bg-orange-500 font-bold py-3 rounded-xl cursor-pointer">Masuk</button>
-          </form>
-          <div className="text-center"><Link href="/" className="text-xs text-slate-400 hover:text-white">Kembali ke Beranda</Link></div>
-        </div>
-      </div>
-    );
-  }
+  const handleDeleteProduct = async (id: string, name: string) => {
+    if (!confirm(`Hapus produk "${name}"?`)) return;
+    const res = await fetch(`http://localhost:5000/api/products/${id}`, { method: 'DELETE' });
+    if (res.ok) fetchData();
+  };
+
+  const handleUpdateOrderStatus = async (orderId: string, status: string, currentResi: string) => {
+    const trackingNumber = prompt('Masukkan Nomor Resi Pengiriman:', currentResi || '');
+    if (trackingNumber === null) return;
+    const res = await fetch(`http://localhost:5000/api/orders/${orderId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, trackingNumber })
+    });
+    if (res.ok) fetchData();
+  };
+
+  const todayOrders = orders.filter(o => o.createdAt && o.createdAt.slice(0, 10) === todayStr);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex justify-between items-center bg-slate-800 p-6 rounded-2xl border border-slate-700">
-          <h1 className="text-xl font-black text-white">Panel Admin Mendadak Outdoor</h1>
-          <div className="space-x-3">
-            <button onClick={() => { localStorage.removeItem('admin_session'); setIsLoggedIn(false); }} className="bg-red-500/20 text-red-400 text-xs px-4 py-2.5 rounded-xl cursor-pointer">Logout</button>
-            <Link href="/" className="bg-slate-700 text-xs px-4 py-2.5 rounded-xl">Ke Beranda</Link>
+    <main className="min-h-screen bg-[#0b132b] text-slate-100 p-6 md:p-8">
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div className="flex justify-between items-center border-b border-gray-800 pb-4">
+          <h1 className="text-xl font-bold text-white">⚙️ Panel Admin</h1>
+          <div className="flex gap-2">
+            <button onClick={() => setActiveTab('products')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'products' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Produk</button>
+            <button onClick={() => setActiveTab('orders')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'orders' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Pesanan ({orders.length})</button>
+            <button onClick={() => setActiveTab('master')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'master' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Kategori & Brand</button>
+            <Link href="/" className="bg-gray-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Toko</Link>
           </div>
         </div>
 
-        <div className="flex space-x-3 border-b border-slate-800 pb-2">
-          <button onClick={() => setActiveTab('orders')} className={`px-5 py-2.5 rounded-xl text-xs font-bold cursor-pointer ${activeTab === 'orders' ? 'bg-orange-500 text-white' : 'bg-slate-800 text-slate-400'}`}>Pesanan ({orders.length})</button>
-          <button onClick={() => setActiveTab('products')} className={`px-5 py-2.5 rounded-xl text-xs font-bold cursor-pointer ${activeTab === 'products' ? 'bg-orange-500 text-white' : 'bg-slate-800 text-slate-400'}`}>Produk ({products.length})</button>
+        {/* Ringkasan */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-[#1e293b] p-4 rounded-xl border border-gray-800">
+            <p className="text-[10px] text-gray-400 uppercase">Masuk Hari Ini</p>
+            <h3 className="text-lg font-bold text-white">{todayOrders.length} Pesanan</h3>
+          </div>
+          <div className="bg-[#1e293b] p-4 rounded-xl border border-gray-800">
+            <p className="text-[10px] text-gray-400 uppercase">Pending</p>
+            <h3 className="text-lg font-bold text-orange-400">{orders.filter(o => o.status === 'PENDING').length} Pesanan</h3>
+          </div>
         </div>
 
-        {activeTab === 'orders' ? (
-          <div className="space-y-4">
-            {orders.map(o => (
-              <div key={o.id} className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-3 text-xs">
-                <div className="flex justify-between font-bold text-orange-400"><span>{o.id} - {o.customerName}</span><span>{o.status}</span></div>
-                <div className="bg-slate-900/50 p-3 rounded-xl space-y-1">
-                  {o.items?.map((item: any, i: number) => (
-                    <div key={i} className="flex justify-between"><span>{item.name} x{item.quantity}</span><span>Rp {(item.price * item.quantity).toLocaleString('id-ID')}</span></div>
-                  ))}
+        {activeTab === 'products' && (
+          <div className="space-y-6">
+            <div className="bg-[#1e293b] p-5 rounded-xl border border-gray-800">
+              <h2 className="text-xs font-bold uppercase mb-3">{editingId ? 'Edit Produk' : 'Tambah Produk Baru'}</h2>
+              <form onSubmit={handleProductSubmit} className="space-y-3 text-xs">
+                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nama Produk" required className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                <div className="grid grid-cols-2 gap-3">
+                  <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="Harga (Rp)" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                  <input type="number" value={stock} onChange={e => setStock(e.target.value)} placeholder="Stok" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
                 </div>
-                <div className="flex justify-between items-center pt-2">
-                  <span>Total: Rp {o.totalAmount?.toLocaleString('id-ID')}</span>
-                  <div className="space-x-2">
-                    <button onClick={() => handleUpdateStatus(o.id, 'Diproses', o.trackingNumber)} className="bg-amber-600 px-3 py-1.5 rounded-lg cursor-pointer">Diproses</button>
-                    <button onClick={() => handleUpdateStatus(o.id, 'Dikirim', o.trackingNumber)} className="bg-blue-600 px-3 py-1.5 rounded-lg cursor-pointer">Dikirim</button>
-                    <button onClick={() => handleUpdateStatus(o.id, 'Selesai', o.trackingNumber)} className="bg-emerald-600 px-3 py-1.5 rounded-lg cursor-pointer">Selesai</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
-            <form onSubmit={handleAddProduct} className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-3 h-fit">
-              <h3 className="text-sm font-bold text-white"><Plus className="w-4 h-4 inline text-orange-400 mr-1" /> Tambah Produk</h3>
-              <input type="text" placeholder="Nama Produk" required value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white" />
-              <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white">
-                <option value="Tenda">Tenda</option><option value="Meja">Meja</option><option value="Kompor">Kompor</option><option value="Lampu">Lampu</option>
-              </select>
-              <input type="number" placeholder="Harga" required value={form.price} onChange={e => setForm({...form, price: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white" />
-              <div>
-                <label className="block text-slate-400 mb-1">Foto Produk</label>
-                <label className="flex items-center justify-center space-x-2 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-300 cursor-pointer">
-                  <Upload className="w-4 h-4 text-orange-400" />
-                  <span>{form.image ? 'Ganti Foto' : 'Pilih File'}</span>
-                  <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                </label>
-                {imagePreview && <div className="mt-2 w-full h-20 rounded-xl overflow-hidden"><img src={imagePreview} className="w-full h-full object-cover" /></div>}
-              </div>
-              <button type="submit" className="w-full bg-orange-500 font-bold py-2.5 rounded-xl cursor-pointer">Simpan Produk</button>
-            </form>
+                <select value={variant} onChange={e => setVariant(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
+                  {['Standard', 'Aksesoris', 'Tenda', 'Meja', 'Kompor', 'Lampu'].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Deskripsi..." rows={2} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                <input type="file" accept="image/*" onChange={e => setImageFile(e.target.files?.[0] || null)} className="w-full text-gray-400" />
+                <button type="submit" disabled={loading} className="w-full bg-orange-600 hover:bg-orange-500 py-2.5 rounded-lg font-bold text-white">{loading ? 'Menyimpan...' : 'Simpan Produk'}</button>
+              </form>
+            </div>
 
-            <div className="md:col-span-2 space-y-2">
-              {products.map(p => (
-                <div key={p.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-14 h-14 bg-slate-900 rounded-xl border border-slate-700 flex items-center justify-center overflow-hidden shrink-0">
-                      {p.image ? <img src={p.image} className="w-full h-full object-cover" /> : <ImageIcon className="w-6 h-6 text-slate-600" />}
-                    </div>
-                    <div>
-                      <span className="text-[10px] bg-slate-700 text-orange-400 px-2 py-0.5 rounded font-bold">{p.category}</span>
-                      <h4 className="font-bold text-white mt-1">{p.name}</h4>
-                      <span className="font-mono text-slate-400">Rp {Number(p.price)?.toLocaleString('id-ID')}</span>
-                    </div>
+            <div className="bg-[#1e293b] p-5 rounded-xl border border-gray-800 space-y-2">
+              <h2 className="text-xs font-bold uppercase mb-3">Daftar Produk ({products.length})</h2>
+              {products.map((p: any) => (
+                <div key={p.id} className="flex justify-between items-center bg-[#0f172a] p-3 rounded-lg border border-gray-800 text-xs">
+                  <div>
+                    <span className="font-bold text-white">{p.name}</span>
+                    <span className="text-gray-400 ml-2">({p.variant})</span>
                   </div>
-                  <button onClick={() => handleDeleteProduct(p.id)} className="bg-red-500/20 text-red-400 p-2.5 rounded-lg cursor-pointer"><Trash2 className="w-4 h-4" /></button>
+                  <div className="flex items-center gap-3">
+                    <span className="text-orange-400 font-semibold">Rp {Number(p.price).toLocaleString('id-ID')}</span>
+                    <button onClick={() => handleEditProduct(p)} className="text-blue-400 hover:underline">Edit</button>
+                    <button onClick={() => handleDeleteProduct(p.id, p.name)} className="text-red-400 hover:underline">Hapus</button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
 
-export default function AdminDashboard() {
-  return <Suspense fallback={<div className="min-h-screen bg-slate-900" />}><AdminContent /></Suspense>;
+        {activeTab === 'orders' && (
+          <div className="bg-[#1e293b] p-5 rounded-xl border border-gray-800 space-y-4 text-xs">
+            <div className="flex gap-3">
+              <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Cari kode/nama..." className="flex-1 bg-[#0f172a] p-2 rounded-lg border border-gray-700 text-white" />
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-[#0f172a] p-2 rounded-lg border border-gray-700 text-white">
+                {['ALL', 'PENDING', 'PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-3">
+              {orders.map((o: any) => (
+                <div key={o.id} className="bg-[#0f172a] p-4 rounded-xl border border-gray-800 space-y-2">
+                  <div className="flex justify-between font-bold">
+                    <span className="text-orange-400">{o.trackingNumber}</span>
+                    <span className="text-yellow-400">{o.status}</span>
+                  </div>
+                  <p className="text-gray-300">Pembeli: {o.customerName} | Total: Rp {Number(o.totalPrice).toLocaleString('id-ID')}</p>
+                  <div className="flex gap-2 pt-2 border-t border-gray-800">
+                    {['PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED'].map(st => (
+                      <button key={st} onClick={() => handleUpdateOrderStatus(o.id, st, o.trackingNumber)} className="bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-[10px]">{st}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'master' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+            {/* Kelola Kategori */}
+            <div className="bg-[#1e293b] p-5 rounded-xl border border-gray-800 space-y-4">
+              <h2 className="font-bold uppercase text-white">Kelola Kategori</h2>
+              <form onSubmit={handleAddCategory} className="flex gap-2">
+                <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Nama Kategori Baru..." required className="flex-1 bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                <button type="submit" className="bg-orange-600 hover:bg-orange-500 px-4 py-2.5 rounded-lg font-bold text-white">Tambah</button>
+              </form>
+              <div className="space-y-2 pt-2">
+                {categories.map((cat: any) => (
+                  <div key={cat.id || cat.name} className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-800 text-white flex justify-between items-center">
+                    <span>{cat.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Kelola Brand */}
+            <div className="bg-[#1e293b] p-5 rounded-xl border border-gray-800 space-y-4">
+              <h2 className="font-bold uppercase text-white">Kelola Brand</h2>
+              <form onSubmit={handleAddBrand} className="flex gap-2">
+                <input type="text" value={newBrandName} onChange={e => setNewBrandName(e.target.value)} placeholder="Nama Brand Baru..." required className="flex-1 bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                <button type="submit" className="bg-orange-600 hover:bg-orange-500 px-4 py-2.5 rounded-lg font-bold text-white">Tambah</button>
+              </form>
+              <div className="space-y-2 pt-2">
+                {brands.map((b: any) => (
+                  <div key={b.id || b.name} className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-800 text-white flex justify-between items-center">
+                    <span>{b.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+
+  function handleEditProduct(p: any) {
+    setEditingId(p.id); setName(p.name); setDescription(p.description || ''); setPrice(p.price); setStock(p.stock); setVariant(p.variant || 'Standard');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 }

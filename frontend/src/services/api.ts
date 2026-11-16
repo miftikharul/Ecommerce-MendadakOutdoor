@@ -1,11 +1,20 @@
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+export async function fetchApi(endpoint: string, options?: RequestInit) {
+  const res = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+  return res.json();
+}
 
 // Mengambil daftar produk
 export async function fetchProducts() {
   try {
-    const res = await fetch(`${API_BASE_URL}/products`);
-    if (!res.ok) throw new Error('Gagal memuat produk');
-    return await res.json();
+    return await fetchApi('/products');
   } catch (error) {
     console.error(error);
     return [];
@@ -15,12 +24,10 @@ export async function fetchProducts() {
 // Menambah produk baru (untuk Admin)
 export async function addProduct(productData: any) {
   try {
-    const res = await fetch(`${API_BASE_URL}/products`, {
+    return await fetchApi('/products', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(productData),
     });
-    return await res.json();
   } catch (error) {
     console.error(error);
   }
@@ -29,10 +36,9 @@ export async function addProduct(productData: any) {
 // Menghapus produk (untuk Admin)
 export async function deleteProduct(id: string) {
   try {
-    const res = await fetch(`${API_BASE_URL}/products/${id}`, {
+    return await fetchApi(`/products/${id}`, {
       method: 'DELETE',
     });
-    return await res.json();
   } catch (error) {
     console.error(error);
   }
@@ -41,9 +47,7 @@ export async function deleteProduct(id: string) {
 // Mengambil daftar pesanan (untuk Admin)
 export async function fetchOrders() {
   try {
-    const res = await fetch(`${API_BASE_URL}/orders`);
-    if (!res.ok) throw new Error('Gagal memuat pesanan');
-    return await res.json();
+    return await fetchApi('/orders');
   } catch (error) {
     console.error(error);
     return [];
@@ -53,12 +57,10 @@ export async function fetchOrders() {
 // Membuat pesanan baru (saat Checkout)
 export async function createOrder(orderData: any) {
   try {
-    const res = await fetch(`${API_BASE_URL}/orders`, {
+    return await fetchApi('/orders', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(orderData),
     });
-    return await res.json();
   } catch (error) {
     console.error(error);
   }
@@ -67,12 +69,10 @@ export async function createOrder(orderData: any) {
 // Update status atau resi pesanan (untuk Admin)
 export async function updateOrder(id: string, updateData: any) {
   try {
-    const res = await fetch(`${API_BASE_URL}/orders/${id}`, {
+    return await fetchApi(`/orders/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updateData),
     });
-    return await res.json();
   } catch (error) {
     console.error(error);
   }
