@@ -7,7 +7,7 @@ export default function AdminPage() {
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
@@ -26,7 +26,10 @@ export default function AdminPage() {
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
+  const [weight, setWeight] = useState('1000');
   const [variant, setVariant] = useState('Standard');
+  const [categoryId, setCategoryId] = useState('');
+  const [brandId, setBrandId] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -38,10 +41,18 @@ export default function AdminPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Helper untuk mendapatkan Header berisikan JWT Token
+  const getAuthHeaders = () => {
+    const token = sessionStorage.getItem('admin_token');
+    return {
+      'Authorization': `Bearer ${token}`
+    };
+  };
+
   // Cek sesi login saat halaman dimuat
   useEffect(() => {
     const token = sessionStorage.getItem('admin_token');
-    if (token === 'admin-authenticated-session-token') {
+    if (token) {
       setIsAuthenticated(true);
     }
     setIsCheckingAuth(false);
@@ -49,11 +60,12 @@ export default function AdminPage() {
 
   const fetchData = async () => {
     try {
+      const headers = getAuthHeaders();
       const [prodRes, ordRes, catRes, brandRes] = await Promise.all([
-        fetch('http://localhost:5000/api/products'),
-        fetch(`http://localhost:5000/api/orders?status=${statusFilter}&search=${searchQuery}`),
-        fetch('http://localhost:5000/api/categories').catch(() => ({ ok: false })),
-        fetch('http://localhost:5000/api/brands').catch(() => ({ ok: false }))
+        fetch('http://localhost:5000/api/products', { headers }),
+        fetch(`http://localhost:5000/api/orders?status=${statusFilter}&search=${searchQuery}`, { headers }),
+        fetch('http://localhost:5000/api/categories', { headers }).catch(() => ({ ok: false })),
+        fetch('http://localhost:5000/api/brands', { headers }).catch(() => ({ ok: false }))
       ]);
       if (prodRes.ok) setProducts(await prodRes.json());
       if (ordRes.ok) setOrders(await ordRes.json());
@@ -70,25 +82,26 @@ export default function AdminPage() {
     fetchData();
   }, [isAuthenticated, statusFilter, searchQuery]);
 
+  // Handler Login Admin dengan /api/auth/login (JWT + bcrypt)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     setLoginLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/admin/login', {
+      const res = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
 
-      if (res.ok && data.success) {
+      if (res.ok && data.token) {
         sessionStorage.setItem('admin_token', data.token);
         setIsAuthenticated(true);
       } else {
-        setLoginError(data.message || 'Username atau password salah!');
+        setLoginError(data.error || 'Email atau password salah!');
       }
     } catch (error) {
       setLoginError('Gagal terhubung ke server backend.');
@@ -100,7 +113,7 @@ export default function AdminPage() {
   const handleLogout = () => {
     sessionStorage.removeItem('admin_token');
     setIsAuthenticated(false);
-    setUsername('');
+    setEmail('');
     setPassword('');
   };
 
@@ -113,15 +126,22 @@ export default function AdminPage() {
       formData.append('description', description);
       formData.append('price', price);
       formData.append('stock', stock);
+      formData.append('weight', weight);
       formData.append('variant', variant);
+      if (categoryId) formData.append('categoryId', categoryId);
+      if (brandId) formData.append('brandId', brandId);
       if (imageFile) formData.append('images', imageFile);
 
       const url = editingId ? `http://localhost:5000/api/products/${editingId}` : 'http://localhost:5000/api/products';
-      const res = await fetch(url, { method: editingId ? 'PUT' : 'POST', body: formData });
+      const res = await fetch(url, { 
+        method: editingId ? 'PUT' : 'POST', 
+        headers: getAuthHeaders(),
+        body: formData 
+      });
 
       if (res.ok) {
         alert(editingId ? 'Produk diperbarui!' : 'Produk ditambahkan!');
-        setName(''); setDescription(''); setPrice(''); setStock(''); setImageFile(null); setEditingId(null);
+        setName(''); setDescription(''); setPrice(''); setStock(''); setWeight('1000'); setCategoryId(''); setBrandId(''); setImageFile(null); setEditingId(null);
         fetchData();
       } else {
         alert('Gagal menyimpan produk.');
@@ -136,7 +156,10 @@ export default function AdminPage() {
     if (!newCategoryName) return;
     const res = await fetch('http://localhost:5000/api/categories', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify({ name: newCategoryName })
     });
     if (res.ok) {
@@ -146,12 +169,24 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (!confirm(`Hapus kategori "${name}"?`)) return;
+    const res = await fetch(`http://localhost:5000/api/categories/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    if (res.ok) fetchData();
+  };
+
   const handleAddBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBrandName) return;
     const res = await fetch('http://localhost:5000/api/brands', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify({ name: newBrandName })
     });
     if (res.ok) {
@@ -161,24 +196,38 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteBrand = async (id: string, name: string) => {
+    if (!confirm(`Hapus brand "${name}"?`)) return;
+    const res = await fetch(`http://localhost:5000/api/brands/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    if (res.ok) fetchData();
+  };
+
   const handleDeleteProduct = async (id: string, name: string) => {
     if (!confirm(`Hapus produk "${name}"?`)) return;
-    const res = await fetch(`http://localhost:5000/api/products/${id}`, { method: 'DELETE' });
+    const res = await fetch(`http://localhost:5000/api/products/${id}`, { 
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
     if (res.ok) fetchData();
   };
 
   const handleUpdateOrderStatus = async (orderId: string, status: string, currentResi: string) => {
-    const trackingNumber = prompt('Masukkan Nomor Resi Pengiriman:', currentResi || '');
+    const trackingNumber = prompt('Masukkan Nomor Resi Pengiriman (AWB):', currentResi || '');
     if (trackingNumber === null) return;
     const res = await fetch(`http://localhost:5000/api/orders/${orderId}/status`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify({ status, trackingNumber })
     });
     if (res.ok) fetchData();
   };
 
-  // Mencegah kedipan layar saat mengecek sessionStorage
   if (isCheckingAuth) {
     return <main className="min-h-screen bg-[#0b132b]" />;
   }
@@ -201,12 +250,12 @@ export default function AdminPage() {
 
           <form onSubmit={handleLogin} className="space-y-3 text-xs">
             <div>
-              <label className="block text-gray-400 mb-1">Username</label>
+              <label className="block text-gray-400 mb-1">Email Admin</label>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Masukkan username admin"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@mendadakoutdoor.com"
                 required
                 className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white focus:outline-none focus:border-orange-500"
               />
@@ -227,7 +276,7 @@ export default function AdminPage() {
             <button
               type="submit"
               disabled={loginLoading}
-              className="w-full bg-orange-600 hover:bg-orange-500 py-2.5 rounded-lg font-bold text-white transition mt-2"
+              className="w-full bg-orange-600 hover:bg-orange-500 py-2.5 rounded-lg font-bold text-white transition mt-2 cursor-pointer"
             >
               {loginLoading ? 'Memverifikasi...' : 'Masuk Panel Admin'}
             </button>
@@ -251,11 +300,11 @@ export default function AdminPage() {
         <div className="flex justify-between items-center border-b border-gray-800 pb-4">
           <h1 className="text-xl font-bold text-white">⚙️ Panel Admin</h1>
           <div className="flex gap-2">
-            <button onClick={() => setActiveTab('products')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'products' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Produk</button>
-            <button onClick={() => setActiveTab('orders')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'orders' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Pesanan ({orders.length})</button>
-            <button onClick={() => setActiveTab('master')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'master' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Kategori & Brand</button>
-            <Link href="/" className="bg-gray-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Toko</Link>
-            <button onClick={handleLogout} className="bg-red-600/80 hover:bg-red-600 px-3 py-1.5 rounded-lg text-xs font-semibold text-white">Keluar</button>
+            <button onClick={() => setActiveTab('products')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${activeTab === 'products' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Produk</button>
+            <button onClick={() => setActiveTab('orders')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${activeTab === 'orders' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Pesanan ({orders.length})</button>
+            <button onClick={() => setActiveTab('master')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${activeTab === 'master' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Kategori & Brand</button>
+            <Link href="/" className="bg-gray-800 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center">Toko</Link>
+            <button onClick={handleLogout} className="bg-red-600/80 hover:bg-red-600 px-3 py-1.5 rounded-lg text-xs font-semibold text-white cursor-pointer">Keluar</button>
           </div>
         </div>
 
@@ -277,16 +326,43 @@ export default function AdminPage() {
               <h2 className="text-xs font-bold uppercase mb-3">{editingId ? 'Edit Produk' : 'Tambah Produk Baru'}</h2>
               <form onSubmit={handleProductSubmit} className="space-y-3 text-xs">
                 <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nama Produk" required className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="Harga (Rp)" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
                   <input type="number" value={stock} onChange={e => setStock(e.target.value)} placeholder="Stok" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                  <input type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Berat (gram)" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
                 </div>
-                <select value={variant} onChange={e => setVariant(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
-                  {['Standard', 'Aksesoris', 'Tenda', 'Meja', 'Kompor', 'Lampu'].map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-gray-400 mb-1">Varian</label>
+                    <select value={variant} onChange={e => setVariant(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
+                      {['Standard', 'Aksesoris', 'Tenda', 'Meja', 'Kompor', 'Lampu'].map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">Kategori</label>
+                    <select value={categoryId} onChange={e => setCategoryId(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
+                      <option value="">Pilih Kategori...</option>
+                      {categories.map((cat: any) => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-gray-400 mb-1">Brand</label>
+                  <select value={brandId} onChange={e => setBrandId(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
+                    <option value="">Pilih Brand...</option>
+                    {brands.map((b: any) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Deskripsi..." rows={2} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
                 <input type="file" accept="image/*" onChange={e => setImageFile(e.target.files?.[0] || null)} className="w-full text-gray-400" />
-                <button type="submit" disabled={loading} className="w-full bg-orange-600 hover:bg-orange-500 py-2.5 rounded-lg font-bold text-white">{loading ? 'Menyimpan...' : 'Simpan Produk'}</button>
+                <button type="submit" disabled={loading} className="w-full bg-orange-600 hover:bg-orange-500 py-2.5 rounded-lg font-bold text-white cursor-pointer">{loading ? 'Menyimpan...' : 'Simpan Produk'}</button>
               </form>
             </div>
 
@@ -297,11 +373,13 @@ export default function AdminPage() {
                   <div>
                     <span className="font-bold text-white">{p.name}</span>
                     <span className="text-gray-400 ml-2">({p.variant})</span>
+                    {p.category && <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded ml-2 text-[10px]">{p.category.name}</span>}
+                    {p.brand && <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded ml-2 text-[10px]">{p.brand.name}</span>}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-orange-400 font-semibold">Rp {Number(p.price).toLocaleString('id-ID')}</span>
-                    <button onClick={() => handleEditProduct(p)} className="text-blue-400 hover:underline">Edit</button>
-                    <button onClick={() => handleDeleteProduct(p.id, p.name)} className="text-red-400 hover:underline">Hapus</button>
+                    <button onClick={() => handleEditProduct(p)} className="text-blue-400 hover:underline cursor-pointer">Edit</button>
+                    <button onClick={() => handleDeleteProduct(p.id, p.name)} className="text-red-400 hover:underline cursor-pointer">Hapus</button>
                   </div>
                 </div>
               ))}
@@ -313,7 +391,7 @@ export default function AdminPage() {
           <div className="bg-[#1e293b] p-5 rounded-xl border border-gray-800 space-y-4 text-xs">
             <div className="flex gap-3">
               <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Cari kode/nama..." className="flex-1 bg-[#0f172a] p-2 rounded-lg border border-gray-700 text-white" />
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-[#0f172a] p-2 rounded-lg border border-gray-700 text-white">
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-[#0f172a] p-2 rounded-lg border border-gray-700 text-white cursor-pointer">
                 {['ALL', 'PENDING', 'PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED'].map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
@@ -322,13 +400,14 @@ export default function AdminPage() {
               {orders.map((o: any) => (
                 <div key={o.id} className="bg-[#0f172a] p-4 rounded-xl border border-gray-800 space-y-2">
                   <div className="flex justify-between font-bold">
-                    <span className="text-orange-400">{o.trackingNumber}</span>
+                    <span className="text-orange-400">{o.orderCode}</span>
                     <span className="text-yellow-400">{o.status}</span>
                   </div>
-                  <p className="text-gray-300">Pembeli: {o.customerName} | Total: Rp {Number(o.totalPrice).toLocaleString('id-ID')}</p>
-                  <div className="flex gap-2 pt-2 border-t border-gray-800">
-                    {['PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED'].map(st => (
-                      <button key={st} onClick={() => handleUpdateOrderStatus(o.id, st, o.trackingNumber)} className="bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-[10px]">{st}</button>
+                  <p className="text-gray-300">Pembeli: {o.customerName} ({o.customerPhone}) | Total: Rp {Number(o.totalPrice).toLocaleString('id-ID')}</p>
+                  <p className="text-gray-400 text-[11px]">Resi Kurir (AWB): <strong className="text-emerald-400 font-mono">{o.trackingNumber || 'Belum diinput'}</strong></p>
+                  <div className="flex gap-2 pt-2 border-t border-gray-800 flex-wrap">
+                    {['PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED'].map(st => (
+                      <button key={st} onClick={() => handleUpdateOrderStatus(o.id, st, o.trackingNumber)} className="bg-gray-800 hover:bg-gray-700 px-2.5 py-1 rounded text-[10px] cursor-pointer">{st}</button>
                     ))}
                   </div>
                 </div>
@@ -344,14 +423,24 @@ export default function AdminPage() {
               <h2 className="font-bold uppercase text-white">Kelola Kategori</h2>
               <form onSubmit={handleAddCategory} className="flex gap-2">
                 <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Nama Kategori Baru..." required className="flex-1 bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
-                <button type="submit" className="bg-orange-600 hover:bg-orange-500 px-4 py-2.5 rounded-lg font-bold text-white">Tambah</button>
+                <button type="submit" className="bg-orange-600 hover:bg-orange-500 px-4 py-2.5 rounded-lg font-bold text-white cursor-pointer">Tambah</button>
               </form>
-              <div className="space-y-2 pt-2">
-                {categories.map((cat: any) => (
-                  <div key={cat.id || cat.name} className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-800 text-white flex justify-between items-center">
-                    <span>{cat.name}</span>
-                  </div>
-                ))}
+              <div className="space-y-2 pt-2 max-h-60 overflow-y-auto">
+                {categories.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">Belum ada kategori.</p>
+                ) : (
+                  categories.map((cat: any) => (
+                    <div key={cat.id} className="bg-[#0f172a] p-3 rounded-lg border border-gray-800 text-white flex justify-between items-center">
+                      <span className="font-medium">{cat.name}</span>
+                      <button 
+                        onClick={() => handleDeleteCategory(cat.id, cat.name)} 
+                        className="text-red-400 hover:text-red-300 text-xs px-2 py-1 bg-red-500/10 rounded border border-red-500/20 cursor-pointer"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -360,14 +449,24 @@ export default function AdminPage() {
               <h2 className="font-bold uppercase text-white">Kelola Brand</h2>
               <form onSubmit={handleAddBrand} className="flex gap-2">
                 <input type="text" value={newBrandName} onChange={e => setNewBrandName(e.target.value)} placeholder="Nama Brand Baru..." required className="flex-1 bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
-                <button type="submit" className="bg-orange-600 hover:bg-orange-500 px-4 py-2.5 rounded-lg font-bold text-white">Tambah</button>
+                <button type="submit" className="bg-orange-600 hover:bg-orange-500 px-4 py-2.5 rounded-lg font-bold text-white cursor-pointer">Tambah</button>
               </form>
-              <div className="space-y-2 pt-2">
-                {brands.map((b: any) => (
-                  <div key={b.id || b.name} className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-800 text-white flex justify-between items-center">
-                    <span>{b.name}</span>
-                  </div>
-                ))}
+              <div className="space-y-2 pt-2 max-h-60 overflow-y-auto">
+                {brands.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">Belum ada brand.</p>
+                ) : (
+                  brands.map((b: any) => (
+                    <div key={b.id} className="bg-[#0f172a] p-3 rounded-lg border border-gray-800 text-white flex justify-between items-center">
+                      <span className="font-medium">{b.name}</span>
+                      <button 
+                        onClick={() => handleDeleteBrand(b.id, b.name)} 
+                        className="text-red-400 hover:text-red-300 text-xs px-2 py-1 bg-red-500/10 rounded border border-red-500/20 cursor-pointer"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -377,7 +476,15 @@ export default function AdminPage() {
   );
 
   function handleEditProduct(p: any) {
-    setEditingId(p.id); setName(p.name); setDescription(p.description || ''); setPrice(p.price); setStock(p.stock); setVariant(p.variant || 'Standard');
+    setEditingId(p.id); 
+    setName(p.name); 
+    setDescription(p.description || ''); 
+    setPrice(p.price); 
+    setStock(p.stock); 
+    setWeight(p.weight || '1000'); 
+    setVariant(p.variant || 'Standard');
+    setCategoryId(p.categoryId || '');
+    setBrandId(p.brandId || '');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 }

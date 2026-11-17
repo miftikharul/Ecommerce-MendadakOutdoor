@@ -4,46 +4,40 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
+import { fetchApi } from '@/utils/api';
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   
-  // State untuk Pencarian Lokasi / Destination ID Binderbyte
   const [searchLocation, setSearchLocation] = useState('');
   const [locationResults, setLocationResults] = useState<any[]>([]);
   const [selectedDestination, setSelectedDestination] = useState<any>(null);
 
-  // State untuk Kurir & Ongkir
   const [courier, setCourier] = useState('jne');
   const [shippingOptions, setShippingOptions] = useState<any[]>([]);
   const [selectedService, setSelectedService] = useState<any>(null);
   const [shippingCost, setShippingCost] = useState(0);
   const [loadingOngkir, setLoadingOngkir] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // State untuk Halaman Konfirmasi Sukses
   const [confirmedOrder, setConfirmedOrder] = useState<any>(null);
 
   useEffect(() => {
+    setIsMounted(true);
     const savedCart = JSON.parse(localStorage.getItem('cart') || '[]');
     setCartItems(savedCart);
   }, []);
 
-  // Hitung total berat keranjang dalam gram (asumsi default 500g jika berat tidak diset)
-  const totalWeightGram = cartItems.reduce((acc, item) => acc + (Number(item.weight || 500) * Number(item.quantity)), 0);
-  const subtotal = cartItems.reduce((acc, item) => acc + (Number(item.price) * Number(item.quantity)), 0);
-  const total = subtotal + shippingCost;
-
-  // Handler Pencarian Lokasi Binderbyte
   useEffect(() => {
     const delayDebounce = setTimeout(async () => {
       if (searchLocation.trim().length >= 3) {
         try {
-          const res = await fetch(`http://localhost:5000/api/locations?q=${encodeURIComponent(searchLocation)}`);
+          const res = await fetchApi(`/api/locations?q=${encodeURIComponent(searchLocation)}`);
           const data = await res.json();
           setLocationResults(Array.isArray(data) ? data : []);
         } catch (err) {
@@ -57,12 +51,19 @@ export default function CheckoutPage() {
     return () => clearTimeout(delayDebounce);
   }, [searchLocation]);
 
-  // Handler Cek Ongkir Otomatis saat Destination & Kurir Dipilih
+  if (!isMounted) {
+    return <main className="min-h-screen bg-[#0b132b]" />;
+  }
+
+  const totalWeightGram = cartItems.reduce((acc, item) => acc + (Number(item.weight || 1000) * Number(item.quantity)), 0);
+  const subtotal = cartItems.reduce((acc, item) => acc + (Number(item.price) * Number(item.quantity)), 0);
+  const total = subtotal + shippingCost;
+
   const handleCheckOngkir = async (destId: string, selectedCourier: string) => {
     if (!destId) return;
     setLoadingOngkir(true);
     try {
-      const res = await fetch('http://localhost:5000/api/check-ongkir', {
+      const res = await fetchApi('/api/check-ongkir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -95,8 +96,8 @@ export default function CheckoutPage() {
       alert('Keranjang belanja kosong!');
       return;
     }
-    if (!selectedDestination) {
-      alert('Silakan pilih kota/kecamatan tujuan dari dropdown lokasi!');
+    if (!selectedDestination || shippingCost <= 0) {
+      alert('Pilih lokasi tujuan dan pastikan ongkos kirim sudah terhitung!');
       return;
     }
 
@@ -106,8 +107,10 @@ export default function CheckoutPage() {
       const orderPayload = {
         customerName: name,
         customerPhone: phone,
-        shippingAddress: `${address}, ${selectedDestination.name || selectedDestination.label} (${courier.toUpperCase()})`,
-        shippingCost,
+        shippingAddress: `${address}, ${selectedDestination.name || selectedDestination.label}`,
+        destinationId: selectedDestination.id,
+        courier: courier,
+        serviceType: selectedService?.service,
         items: cartItems.map((item) => ({
           productId: item.id,
           quantity: Number(item.quantity),
@@ -115,7 +118,7 @@ export default function CheckoutPage() {
         }))
       };
 
-      const res = await fetch('http://localhost:5000/api/orders', {
+      const res = await fetchApi('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderPayload)
@@ -125,7 +128,7 @@ export default function CheckoutPage() {
 
       if (res.ok) {
         const orderData = {
-          orderCode: responseData.trackingNumber || 'MO-UNKNOWN',
+          orderCode: responseData.orderCode || 'MO-UNKNOWN',
           total,
           name,
           address: `${address}, ${selectedDestination.name || selectedDestination.label}`,
@@ -133,7 +136,6 @@ export default function CheckoutPage() {
           service: selectedService?.service || 'Reguler'
         };
 
-        // Kosongkan keranjang setelah pesanan berhasil disimpan
         localStorage.removeItem('cart');
         setCartItems([]);
         setConfirmedOrder(orderData);
@@ -148,7 +150,6 @@ export default function CheckoutPage() {
     }
   };
 
-  // Jika pesanan sudah sukses dibuat, tampilkan Halaman Konfirmasi Mandiri
   if (confirmedOrder) {
     const adminPhone = '6281225530033';
     const waMessage = `Halo Admin Mendadak Outdoor, saya ingin konfirmasi pembayaran untuk pesanan Kode: *${confirmedOrder.orderCode}*.\n\nTotal Transfer: *Rp ${confirmedOrder.total.toLocaleString('id-ID')}*\nNama: ${confirmedOrder.name}\nKurir: ${confirmedOrder.courier} (${confirmedOrder.service})\n\n[Bukti transfer dilampirkan]`;
@@ -176,16 +177,13 @@ export default function CheckoutPage() {
                   <span className="text-slate-400">Total Pembayaran:</span>
                   <span className="font-bold text-white">Rp {confirmedOrder.total.toLocaleString('id-ID')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Batas Waktu Transfer:</span>
-                  <span className="font-bold text-red-400">24 Jam ke Depan</span>
-                </div>
               </div>
 
+              {/* Poin 16: Rekening BCA Asli Toko */}
               <div className="bg-orange-950/30 p-4 rounded-2xl border border-orange-900/50 text-left space-y-2 text-xs">
-                <p className="font-bold text-orange-400">Silakan Transfer Pembayaran ke:</p>
-                <p className="text-white font-mono">BCA: <strong>1234-5678-90</strong> (a.n. Mendadak Outdoor)</p>
-                <p className="text-slate-400 text-[11px]">Kirimkan bukti transfer beserta kode pesanan melalui tombol WhatsApp di bawah.</p>
+                <p className="font-bold text-orange-400">Silakan Transfer Pembayaran ke Rekening Resmi:</p>
+                <p className="text-white font-mono text-sm">BCA: <strong>8830912345</strong> (a.n. PT Mendadak Outdoor Indonesia)</p>
+                <p className="text-slate-400 text-[11px]">Kirimkan bukti transfer beserta kode pesanan melalui WhatsApp admin di bawah.</p>
               </div>
 
               <div className="pt-2 flex flex-col sm:flex-row gap-3">
@@ -207,6 +205,7 @@ export default function CheckoutPage() {
             </div>
           </div>
         </div>
+        <Footer />
       </main>
     );
   }
@@ -219,11 +218,10 @@ export default function CheckoutPage() {
         <div className="max-w-5xl mx-auto px-6 py-10">
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-white">⚡ Checkout Pesanan</h1>
-            <p className="text-xs text-gray-400">Selesaikan pengiriman dan konfirmasi pesanan kilatmu.</p>
+            <p className="text-xs text-gray-400">Selesaikan pengiriman dan konfirmasi pesanan.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Form Data Pembeli */}
             <div className="md:col-span-2 bg-[#1e293b] p-6 rounded-2xl border border-gray-800 shadow-md">
               <h2 className="text-sm font-bold text-white mb-4 uppercase tracking-wider">Informasi Pengiriman</h2>
               <form onSubmit={handleCheckoutSubmit} className="space-y-4">
@@ -251,7 +249,6 @@ export default function CheckoutPage() {
                   />
                 </div>
 
-                {/* Dropdown Pencarian Lokasi Dinamis */}
                 <div className="relative">
                   <label className="block text-xs font-medium text-gray-300 mb-1">Cari Kecamatan / Kota Tujuan</label>
                   <input 
@@ -260,8 +257,9 @@ export default function CheckoutPage() {
                     onChange={(e) => {
                       setSearchLocation(e.target.value);
                       setSelectedDestination(null);
+                      setShippingCost(0);
                     }}
-                    placeholder="Ketik minimal 3 huruf (contoh: Cibinong)..."
+                    placeholder="Ketik minimal 3 huruf..."
                     className="w-full bg-[#0f172a] text-white text-xs px-4 py-2.5 rounded-xl border border-gray-700 focus:outline-none focus:border-orange-500"
                   />
                   {selectedDestination && (
@@ -319,7 +317,6 @@ export default function CheckoutPage() {
                   </select>
                 </div>
 
-                {/* Pilihan Layanan Ongkir Hasil API */}
                 <div>
                   <label className="block text-xs font-medium text-gray-300 mb-1">Pilih Layanan & Ongkir</label>
                   {loadingOngkir ? (
@@ -346,17 +343,17 @@ export default function CheckoutPage() {
                   )}
                 </div>
 
+                {/* Poin 11: Tombol Buat Pesanan dikunci jika ongkir belum valid / 0 */}
                 <button 
                   type="submit" 
-                  disabled={loading || !selectedDestination}
+                  disabled={loading || !selectedDestination || shippingCost <= 0}
                   className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-xs transition shadow cursor-pointer mt-4"
                 >
-                  {loading ? 'Memproses Pesanan...' : 'Buat Pesanan Sekarang 🚀'}
+                  {loading ? 'Memproses Pesanan...' : shippingCost <= 0 ? 'Pilih Lokasi & Hitung Ongkir Dulu ⚠️' : 'Buat Pesanan Sekarang 🚀'}
                 </button>
               </form>
             </div>
 
-            {/* Ringkasan Pesanan */}
             <div className="bg-[#1e293b] p-6 rounded-2xl border border-gray-800 shadow-md h-fit space-y-4">
               <h2 className="text-sm font-bold text-white border-b border-gray-800 pb-3 uppercase tracking-wider">Ringkasan Belanja</h2>
               
@@ -394,10 +391,7 @@ export default function CheckoutPage() {
           </div>
         </div>
       </div>
-
-      <footer className="bg-[#0f172a] text-gray-400 py-6 text-center text-xs border-t border-gray-800 mt-12">
-        <p>© 2026 Mendadak Outdoor. All rights reserved.</p>
-      </footer>
+      <Footer />
     </main>
   );
 }

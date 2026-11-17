@@ -29,11 +29,12 @@ function ProductDetailContent() {
     fetch(`http://localhost:5000/api/products/${productId}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          setProduct(data.data);
-          // Set varian pertama dari database jika ada
-          if (data.data.variants && data.data.variants.length > 0) {
-            setSelectedVariant(data.data.variants[0]);
+        if (data.success || data.id) {
+          // Menyesuaikan jika data dibungkus dalam key 'data' atau langsung object produknya
+          const productData = data.data || data;
+          setProduct(productData);
+          if (productData.variants && productData.variants.length > 0) {
+            setSelectedVariant(productData.variants[0]);
           }
         }
         setLoading(false);
@@ -100,9 +101,15 @@ function ProductDetailContent() {
               <Heart className={`w-4 h-4 ${isWishlisted(product.id) ? 'text-red-500 fill-current' : 'text-slate-300 hover:text-red-400'}`} />
             </button>
             
-            {product.images && product.images.length > 0 ? (
+            {product.image ? (
               <img 
-                src={`http://localhost:5000${product.images[0]}`} 
+                src={product.image.startsWith('http') ? product.image : `http://localhost:5000${product.image}`} 
+                alt={product.name} 
+                className="w-full h-full object-cover"
+              />
+            ) : product.images && product.images.length > 0 ? (
+              <img 
+                src={product.images[0].startsWith('http') ? product.images[0] : `http://localhost:5000${product.images[0]}`} 
                 alt={product.name} 
                 className="w-full h-full object-cover"
               />
@@ -183,7 +190,20 @@ function ProductDetailContent() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => {
-                  addToCart(product, quantity, selectedVariant);
+                  // Kirim object data produk secara eksplisit agar tertangkap sempurna oleh CartContext
+                  addToCart({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    weight: product.weight || 1000,
+                    image: product.image 
+                      ? (product.image.startsWith('http') ? product.image : `http://localhost:5000${product.image}`)
+                      : (product.images && product.images.length > 0 
+                          ? (product.images[0].startsWith('http') ? product.images[0] : `http://localhost:5000${product.images[0]}`) 
+                          : ''),
+                    variant: selectedVariant || 'Standard',
+                    quantity: quantity
+                  });
                   toast.success(`Berhasil menambahkan ${quantity}x ${product.name} ke keranjang!`);
                 }}
                 className="flex-1 bg-orange-600 text-white py-3.5 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 hover:bg-orange-500 transition shadow-md cursor-pointer"

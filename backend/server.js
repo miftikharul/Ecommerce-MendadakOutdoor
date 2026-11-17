@@ -9,15 +9,17 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 
-// Muat konfigurasi environment dari file .env
 require('dotenv').config();
 
 const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'rahasia_admin_token_sangat_aman';
 
-// Batasi CORS hanya untuk domain toko
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("FATAL ERROR: JWT_SECRET belum didefinisikan di environment variables.");
+}
+
 const allowedOrigins = ['http://localhost:3000', 'https://mendadak-outdoor.com'];
 app.use(cors({
   origin: function (origin, callback) {
@@ -48,7 +50,7 @@ const upload = multer({
   }
 });
 
-// ==================== ZOD VALIDATION SCHEMAS ====================
+// ==================== ZOD VALIDATION SCHEMAS (P1 - Zod 4 error.issues) ====================
 const checkoutSchema = z.object({
   customerName: z.string().min(1, 'Nama wajib diisi'),
   customerPhone: z.string().regex(/^[0-9+\-\s]+$/, 'Nomor WhatsApp harus berupa angka atau format yang valid'),
@@ -58,7 +60,9 @@ const checkoutSchema = z.object({
     quantity: z.number().int().min(1, 'Jumlah minimal 1'),
     variant: z.string().optional()
   })).min(1, 'Keranjang belanja kosong'),
-  shippingCost: z.number().min(0).optional()
+  destinationId: z.string().min(1, 'Destinasi pengiriman wajib diisi'),
+  courier: z.string().min(1, 'Kurir pengiriman wajib diisi'),
+  serviceType: z.string().min(1, 'Jenis layanan kurir wajib diisi')
 });
 
 const verifyAdmin = (req, res, next) => {
@@ -91,21 +95,22 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// ==================== CHECKOUT AMAN & SERVER-SIDE PRICING ====================
+// ==================== CHECKOUT & TRANSAKSI ATOMIK ====================
 app.post('/api/orders', async (req, res) => {
   try {
     const validationResult = checkoutSchema.safeParse(req.body);
     if (!validationResult.success) {
       return res.status(400).json({ 
         error: 'Validasi gagal', 
-        details: validationResult.error.errors.map(e => e.message) 
+        details: validationResult.error.issues.map(e => e.message) 
       });
     }
 
-    const { customerName, customerPhone, shippingAddress, items, shippingCost } = validationResult.data;
+    const { customerName, customerPhone, shippingAddress, items, destinationId, courier, serviceType } = validationResult.data;
 
-    let calculatedTotalPrice = 0;
-    const orderItemsData = [];
+    let calculatedProductPrice = 0;
+    let totalWeightGram = 0;
+    const itemsValidationData = [];
 
     for (const item of items) {
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
@@ -117,22 +122,49 @@ app.post('/api/orders', async (req, res) => {
         return res.status(400).json({ error: `Stok produk ${product.name} tidak mencukupi!` });
       }
 
-      calculatedTotalPrice += product.price * item.quantity;
+      calculatedProductPrice += product.price * item.quantity;
+      totalWeightGram += (product.weight || 1000) * item.quantity;
       
-      orderItemsData.push({
+      itemsValidationData.push({
         productId: product.id,
         quantity: item.quantity,
-        price: product.price
-      });
-
-      await prisma.product.update({
-        where: { id: product.id },
-        data: { stock: product.stock - item.quantity }
+        price: product.price,
+        productName: product.name,
+        variant: item.variant || product.variant || 'Standard',
+        currentStock: product.stock
       });
     }
 
-    const finalShippingCost = shippingCost || 0;
-    calculatedTotalPrice += finalShippingCost;
+    let finalShippingCost = 0;
+    const costParams = new URLSearchParams({
+      api_key: process.env.BINDERBYTE_API_KEY,
+      origin: process.env.BINDERBYTE_ORIGIN_ID,
+      destination: destinationId,
+      weight: String(totalWeightGram / 1000),
+      courier: courier
+    });
+
+    const BB = 'https://api.binderbyte.com';
+    const bbResponse = await fetch(`${BB}/v1/cost`, {
+      method: 'POST',
+      body: costParams
+    });
+    const bbResult = await bbResponse.json();
+
+    if (bbResult.code === '200') {
+      const allCosts = bbResult.data.results.flatMap(k => k.costs);
+      const selectedCost = allCosts.find(c => c.service === serviceType);
+      
+      if (selectedCost) {
+        finalShippingCost = Number(selectedCost.price);
+      } else {
+        return res.status(400).json({ error: 'Layanan kurir yang dipilih tidak valid.' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Gagal memvalidasi ongkos kirim ke server kurir.' });
+    }
+
+    const totalPrice = calculatedProductPrice + finalShippingCost;
 
     const today = new Date();
     const dateStr = today.toISOString().slice(2, 10).replace(/-/g, '');
@@ -141,25 +173,37 @@ app.post('/api/orders', async (req, res) => {
         createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) }
       }
     });
-    const trackingNumber = `MO-${dateStr}-${String(countToday + 1).padStart(4, '0')}`;
+    const orderCode = `MO-${dateStr}-${String(countToday + 1).padStart(4, '0')}`;
 
-    const newOrder = await prisma.order.create({
-      data: {
-        trackingNumber,
-        customerName,
-        customerPhone,
-        shippingAddress,
-        totalPrice: calculatedTotalPrice,
-        shippingCost: finalShippingCost,
-        status: 'PENDING',
-        items: { create: orderItemsData }
-      },
-      include: { items: true }
+    const newOrder = await prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          orderCode,
+          customerName,
+          customerPhone,
+          shippingAddress,
+          totalPrice: Math.round(totalPrice),
+          shippingCost: Math.round(finalShippingCost),
+          status: 'PENDING',
+          items: {
+            create: itemsValidationData.map(i => ({
+              productId: i.productId,
+              quantity: i.quantity,
+              price: Math.round(i.price),
+              productName: i.productName,
+              variant: i.variant
+            }))
+          }
+        },
+        include: { items: true }
+      });
+
+      return created;
     });
 
     res.status(201).json({
-      message: 'Pesanan berhasil dibuat dengan aman!',
-      trackingNumber,
+      message: 'Pesanan berhasil dibuat!',
+      orderCode: orderCode,
       order: newOrder
     });
   } catch (error) {
@@ -168,14 +212,15 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// ==================== MANAJEMEN PESANAN & ALUR STATUS ADMIN ====================
-app.get('/api/orders', async (req, res) => {
+// ==================== MANAJEMEN PESANAN & STOK (Poin 13) ====================
+app.get('/api/orders', verifyAdmin, async (req, res) => {
   try {
     const { status, search } = req.query;
     let where = {};
     if (status && status !== 'ALL') where.status = status;
     if (search) {
       where.OR = [
+        { orderCode: { contains: search, mode: 'insensitive' } },
         { trackingNumber: { contains: search, mode: 'insensitive' } },
         { customerName: { contains: search, mode: 'insensitive' } }
       ];
@@ -191,7 +236,7 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
-app.put('/api/orders/:id/status', async (req, res) => {
+app.put('/api/orders/:id/status', verifyAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { status, trackingNumber } = req.body;
@@ -201,30 +246,85 @@ app.put('/api/orders/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Status pesanan tidak valid.' });
     }
 
-    const updatedOrder = await prisma.order.update({
+    const existingOrder = await prisma.order.findUnique({
       where: { id },
-      data: {
-        status: status || undefined,
-        trackingNumber: trackingNumber !== undefined ? trackingNumber : undefined
-      },
       include: { items: true }
     });
 
-    res.json({ message: 'Status pesanan berhasil diperbarui!', order: updatedOrder });
+    if (!existingOrder) return res.status(404).json({ error: 'Pesanan tidak ditemukan.' });
+
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      if (status === 'PAID' && existingOrder.status !== 'PAID' && existingOrder.status !== 'COMPLETED' && existingOrder.status !== 'SHIPPED') {
+        for (const item of existingOrder.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { decrement: item.quantity } }
+          });
+        }
+      }
+
+      if (status === 'CANCELLED' && existingOrder.status === 'PAID') {
+        for (const item of existingOrder.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } }
+          });
+        }
+      }
+
+      const updatePayload = {};
+      if (status) updatePayload.status = status;
+      if (trackingNumber !== undefined && trackingNumber.trim() !== '') {
+        updatePayload.trackingNumber = trackingNumber;
+      }
+
+      return await tx.order.update({
+        where: { id },
+        data: updatePayload,
+        include: { items: true }
+      });
+    });
+
+    res.json({ message: 'Status dan resi pesanan berhasil diperbarui!', order: updatedOrder });
   } catch (error) {
+    console.error('Update status error:', error);
     res.status(500).json({ error: 'Gagal memperbarui status.' });
   }
 });
 
-// ==================== PRODUK & CRUD ADMIN ====================
+// ==================== PRODUK (Poin 9, 14, 15) ====================
 app.get('/api/products', async (req, res) => {
-  const products = await prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
-  res.json(products);
+  try {
+    const products = await prisma.product.findMany({
+      include: { category: true, brand: true },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(products);
+  } catch (error) {
+    console.error('Get products error:', error);
+    res.status(500).json({ error: 'Gagal memuat daftar produk.' });
+  }
 });
 
-app.post('/api/products', upload.array('images', 5), async (req, res) => {
+app.get('/api/products/:id', async (req, res) => {
   try {
-    const { name, description, price, stock, weight, variant } = req.body;
+    const { id } = req.params;
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: { category: true, brand: true }
+    });
+    if (!product) return res.status(404).json({ error: 'Produk tidak ditemukan.' });
+    res.json(product);
+  } catch (error) {
+    console.error('Get product detail error:', error);
+    res.status(500).json({ error: 'Gagal mengambil detail produk.' });
+  }
+});
+
+// DIPERBAIKI: Menangkap categoryId dan brandId dengan aman
+app.post('/api/products', verifyAdmin, upload.array('images', 5), async (req, res) => {
+  try {
+    const { name, description, price, stock, weight, variant, categoryId, brandId } = req.body;
     let singleImagePath = null;
     
     if (req.files && req.files.length > 0) {
@@ -239,33 +339,37 @@ app.post('/api/products', upload.array('images', 5), async (req, res) => {
       data: {
         name: name || 'Produk Tanpa Nama',
         description: description || '-',
-        price: parseFloat(price) || 0,
+        price: parseInt(price) || 0,
         stock: parseInt(stock) || 0,
-        weight: parseFloat(weight) || 1.0,
+        weight: parseFloat(weight) || 1000,
         variant: variant || 'Standard',
-        image: singleImagePath
+        image: singleImagePath,
+        categoryId: (categoryId && categoryId !== '') ? categoryId : null,
+        brandId: (brandId && brandId !== '') ? brandId : null
       }
     });
 
     res.status(201).json({ success: true, message: 'Produk berhasil ditambahkan!', product: newProduct });
   } catch (error) {
-    console.error('DETAIL ERROR PRODUCT:', error);
+    console.error('Create product error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.put('/api/products/:id', upload.array('images', 5), async (req, res) => {
+app.put('/api/products/:id', verifyAdmin, upload.array('images', 5), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price, stock, weight, variant } = req.body;
+    const { name, description, price, stock, weight, variant, categoryId, brandId } = req.body;
     
     let updateData = {
       name: name || undefined,
       description: description || undefined,
-      price: price ? parseFloat(price) : undefined,
+      price: price ? parseInt(price) : undefined,
       stock: stock ? parseInt(stock) : undefined,
       weight: weight ? parseFloat(weight) : undefined,
       variant: variant || undefined,
+      categoryId: (categoryId && categoryId !== '') ? categoryId : null,
+      brandId: (brandId && brandId !== '') ? brandId : null
     };
 
     if (req.files && req.files.length > 0) {
@@ -283,14 +387,20 @@ app.put('/api/products/:id', upload.array('images', 5), async (req, res) => {
 
     res.json({ success: true, message: 'Produk berhasil diperbarui!', product: updatedProduct });
   } catch (error) {
-    console.error('DETAIL ERROR UPDATE PRODUCT:', error);
+    console.error('Update product error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.delete('/api/products/:id', async (req, res) => {
-  await prisma.product.delete({ where: { id: req.params.id } });
-  res.json({ message: 'Produk berhasil dihapus!' });
+app.delete('/api/products/:id', verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.product.delete({ where: { id } });
+    res.json({ message: 'Produk berhasil dihapus!' });
+  } catch (error) {
+    console.error('Delete product error:', error);
+    res.status(500).json({ error: 'Gagal menghapus produk.' });
+  }
 });
 
 // ==================== KATEGORI & BRAND MASTER ====================
@@ -303,7 +413,7 @@ app.get('/api/categories', async (req, res) => {
   }
 });
 
-app.post('/api/categories', async (req, res) => {
+app.post('/api/categories', verifyAdmin, async (req, res) => {
   try {
     const { name } = req.body;
     const newCategory = await prisma.category.create({ data: { name } });
@@ -322,7 +432,7 @@ app.get('/api/brands', async (req, res) => {
   }
 });
 
-app.post('/api/brands', async (req, res) => {
+app.post('/api/brands', verifyAdmin, async (req, res) => {
   try {
     const { name } = req.body;
     const newBrand = await prisma.brand.create({ data: { name } });
@@ -336,7 +446,6 @@ app.post('/api/brands', async (req, res) => {
 const BB = 'https://api.binderbyte.com';
 const KEY = process.env.BINDERBYTE_API_KEY;
 
-// 1) Cari lokasi tujuan / asal (untuk dropdown alamat di checkout)
 app.get('/api/locations', async (req, res) => {
   try {
     const url = `${BB}/v1/locations?api_key=${KEY}&search=${encodeURIComponent(req.query.q || '')}`;
@@ -349,7 +458,6 @@ app.get('/api/locations', async (req, res) => {
   }
 });
 
-// 2) Hitung ongkir: berat dikirim dalam KG (weightGram / 1000)
 app.post('/api/check-ongkir', async (req, res) => {
   try {
     const { destinationId, weightGram, courier } = req.body;
@@ -361,8 +469,8 @@ app.post('/api/check-ongkir', async (req, res) => {
       api_key: KEY,
       origin: process.env.BINDERBYTE_ORIGIN_ID,
       destination: destinationId,
-      weight: String(weightGram / 1000), // Konversi gram ke kilogram
-      courier: courier // contoh: 'jne', 'jnt', atau 'sicepat'
+      weight: String(weightGram / 1000),
+      courier: courier
     });
 
     const response = await fetch(`${BB}/v1/cost`, {
@@ -391,7 +499,6 @@ app.post('/api/check-ongkir', async (req, res) => {
   }
 });
 
-// 3) Lacak resi: parameter wajib menggunakan `awb` (bukan waybill)
 app.get('/api/track-resi', async (req, res) => {
   try {
     const { courier, awb } = req.query;
@@ -414,24 +521,28 @@ app.get('/api/track-resi', async (req, res) => {
   }
 });
 
-app.post('/api/admin/login', (req, res) => {
-  const { username, password } = req.body;
+app.get('/api/orders/track-local', async (req, res) => {
+  try {
+    const { query } = req.query;
+    if (!query) return res.status(400).json({ error: 'Masukkan kode pesanan atau nomor WhatsApp.' });
 
-  if (
-    username === process.env.ADMIN_USERNAME &&
-    password === process.env.ADMIN_PASSWORD
-  ) {
-    // Kembalikan token sederhana
-    return res.json({
-      success: true,
-      token: 'admin-authenticated-session-token',
+    const orders = await prisma.order.findMany({
+      where: {
+        OR: [
+          { orderCode: { contains: String(query), mode: 'insensitive' } },
+          { trackingNumber: { contains: String(query), mode: 'insensitive' } },
+          { customerPhone: { contains: String(query), mode: 'insensitive' } }
+        ]
+      },
+      include: { items: true },
+      orderBy: { createdAt: 'desc' }
     });
-  }
 
-  return res.status(401).json({
-    success: false,
-    message: 'Username atau password salah!',
-  });
+    res.json(orders);
+  } catch (error) {
+    console.error('Track local error:', error);
+    res.status(500).json({ error: 'Gagal mencari data pesanan.' });
+  }
 });
 
 app.listen(PORT, () => {

@@ -4,12 +4,15 @@ import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import Link from 'next/link';
-import { Clock, ArrowLeft, MapPin, Search } from 'lucide-react';
+import { Clock, ArrowLeft, Search } from 'lucide-react';
+import { fetchApi } from '@/utils/api';
 
 export default function TrackingPage() {
-  const [searchResi, setSearchResi] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchType, setSearchType] = useState<'live' | 'local'>('local');
   const [selectedCourier, setSelectedCourier] = useState('jne');
   const [trackingData, setTrackingData] = useState<any>(null);
+  const [localOrders, setLocalOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -22,20 +25,32 @@ export default function TrackingPage() {
 
   const handleTracking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchResi.trim()) return;
+    if (!searchQuery.trim()) return;
 
     setLoading(true);
     setErrorMessage('');
     setTrackingData(null);
+    setLocalOrders([]);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/track-resi?courier=${selectedCourier}&waybill=${searchResi.trim()}`);
-      const result = await res.json();
+      if (searchType === 'live') {
+        const res = await fetchApi(`/api/track-resi?courier=${selectedCourier}&awb=${encodeURIComponent(searchQuery.trim())}`);
+        const result = await res.json();
 
-      if (result.status === 200) {
-        setTrackingData(result.data);
+        if (res.ok) {
+          setTrackingData(result);
+        } else {
+          setErrorMessage(result.message || 'Resi tidak ditemukan atau ekspedisi tidak sesuai.');
+        }
       } else {
-        setErrorMessage(result.message || 'Resi tidak ditemukan atau pilihan ekspedisi tidak sesuai.');
+        const res = await fetchApi(`/api/orders/track-local?query=${encodeURIComponent(searchQuery.trim())}`);
+        const result = await res.json();
+
+        if (res.ok && Array.isArray(result) && result.length > 0) {
+          setLocalOrders(result);
+        } else {
+          setErrorMessage('Pesanan tidak ditemukan dengan Kode Pesanan / No. WhatsApp tersebut.');
+        }
       }
     } catch (err) {
       console.error(err);
@@ -54,13 +69,13 @@ export default function TrackingPage() {
           <div className="text-xs text-slate-400 flex items-center space-x-2">
             <Link href="/" className="hover:text-orange-400 transition">Katalog</Link>
             <span>/</span>
-            <span className="font-bold text-slate-200">Lacak Pengiriman Live</span>
+            <span className="font-bold text-slate-200">Lacak Status Pesanan</span>
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-black text-white">Lacak Paket Multi-Ekspedisi</h1>
-              <p className="text-xs text-slate-400 mt-0.5">Cek perjalanan paket JNE, J&T, Sentral Cargo, & J&T Cargo secara real-time.</p>
+              <h1 className="text-2xl font-black text-white">Lacak Pengiriman & Pesanan</h1>
+              <p className="text-xs text-slate-400 mt-0.5">Cek status pesanan lokal atau lacak resi (AWB) ekspedisi real-time.</p>
             </div>
             <Link href="/" className="inline-flex items-center space-x-1.5 text-xs font-semibold text-slate-400 hover:text-orange-400 transition shrink-0">
               <ArrowLeft className="w-4 h-4" />
@@ -68,38 +83,61 @@ export default function TrackingPage() {
             </Link>
           </div>
 
-          {/* Form Input Resi & Pilih Kurir */}
           <div className="bg-[#1e293b] p-6 rounded-3xl border border-gray-800 shadow-sm space-y-4">
+            <div className="flex gap-2 border-b border-gray-800 pb-3">
+              <button
+                type="button"
+                onClick={() => setSearchType('local')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  searchType === 'local' ? 'bg-orange-600 text-white' : 'bg-[#0f172a] text-slate-400 hover:text-white'
+                }`}
+              >
+                Cari Berdasarkan Kode Pesanan / No. WA
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchType('live')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  searchType === 'live' ? 'bg-orange-600 text-white' : 'bg-[#0f172a] text-slate-400 hover:text-white'
+                }`}
+              >
+                Lacak Resi Kurir (AWB Live)
+              </button>
+            </div>
+
             <form onSubmit={handleTracking} className="space-y-4">
-              
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300 block">Pilih Ekspedisi</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {courierList.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setSelectedCourier(c.id)}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                        selectedCourier === c.id
-                          ? 'bg-orange-600 text-white border-orange-500 shadow-sm'
-                          : 'bg-[#0f172a] text-slate-300 border-gray-700 hover:bg-gray-800'
-                      }`}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
+              {searchType === 'live' && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 block">Pilih Ekspedisi</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {courierList.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedCourier(c.id)}
+                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                          selectedCourier === c.id
+                            ? 'bg-orange-600 text-white border-orange-500 shadow-sm'
+                            : 'bg-[#0f172a] text-slate-300 border-gray-700 hover:bg-gray-800'
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300 block">Nomor Resi Pengiriman</label>
+                <label className="text-xs font-bold text-slate-300 block">
+                  {searchType === 'live' ? 'Nomor Resi (AWB)' : 'Masukkan Kode Pesanan (cth: MO-...) atau No. WhatsApp'}
+                </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Masukkan nomor resi kurir..."
-                    value={searchResi}
-                    onChange={(e) => setSearchResi(e.target.value)}
+                    placeholder={searchType === 'live' ? 'Masukkan nomor AWB kurir...' : 'Contoh: MO-261118-0001 atau 0812...'}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex-1 bg-[#0f172a] border border-gray-700 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-white placeholder-slate-500"
                     required
                   />
@@ -109,24 +147,63 @@ export default function TrackingPage() {
                     className="bg-orange-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:bg-orange-500 transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 shadow-md"
                   >
                     <Search className="w-4 h-4" />
-                    <span>{loading ? 'Melacak...' : 'Lacak Resi'}</span>
+                    <span>{loading ? 'Mencari...' : 'Cari Data'}</span>
                   </button>
                 </div>
               </div>
             </form>
           </div>
 
-          {/* Pesan Error */}
           {errorMessage && (
             <div className="bg-red-950/50 border border-red-800 text-red-300 p-4 rounded-2xl text-xs font-medium text-center">
               {errorMessage}
             </div>
           )}
 
-          {/* Tampilan Hasil Tracking Live */}
+          {localOrders.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-bold text-white">Ditemukan {localOrders.length} Pesanan</h3>
+              {localOrders.map((order) => (
+                <div key={order.id} className="bg-[#1e293b] rounded-3xl border border-gray-800 p-6 space-y-4 shadow-sm">
+                  <div className="flex justify-between items-center pb-3 border-b border-gray-800 text-xs">
+                    <div>
+                      <span className="text-orange-400 font-mono font-bold text-sm">{order.orderCode}</span>
+                      <p className="text-slate-400 text-[11px]">Dibuat: {new Date(order.createdAt).toLocaleString('id-ID')}</p>
+                    </div>
+                    <span className="px-3 py-1 bg-orange-950 text-orange-400 border border-orange-900 rounded-xl font-bold uppercase">
+                      Status: {order.status}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs bg-[#0f172a] p-4 rounded-2xl">
+                    <div>
+                      <p className="text-slate-400">Penerima: <strong className="text-white">{order.customerName}</strong> ({order.customerPhone})</p>
+                      <p className="text-slate-400 mt-1">Alamat: <strong className="text-white">{order.shippingAddress}</strong></p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">No. Resi Kurir (AWB): <strong className="text-emerald-400 font-mono">{order.trackingNumber || 'Belum diinput admin'}</strong></p>
+                      <p className="text-slate-400 mt-1">Total Tagihan: <strong className="text-orange-400 font-mono">Rp {order.totalPrice?.toLocaleString('id-ID')}</strong></p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-bold text-white mb-2">Item Belanja:</h4>
+                    <div className="space-y-2">
+                      {order.items?.map((item: any, idx: number) => (
+                        <div key={idx} className="flex justify-between items-center text-xs bg-[#0f172a]/60 px-3 py-2 rounded-xl border border-gray-800">
+                          <span className="text-slate-200">{item.productName || 'Produk'} <span className="text-slate-400">({item.variant})</span> x{item.quantity}</span>
+                          <span className="font-mono text-orange-400">Rp {(item.price * item.quantity).toLocaleString('id-ID')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {trackingData && (
             <div className="bg-[#1e293b] rounded-3xl border border-gray-800 p-6 space-y-6 shadow-sm">
-              
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 border-b border-gray-800 gap-3">
                 <div>
                   <div className="flex items-center space-x-2">
@@ -134,37 +211,24 @@ export default function TrackingPage() {
                       {trackingData.summary?.courier}
                     </span>
                     <span className="text-xs font-mono font-bold text-slate-200">
-                      Resi: {trackingData.summary?.waybill}
+                      AWB: {trackingData.summary?.waybill}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1">Layanan: <span className="font-semibold text-slate-200">{trackingData.summary?.service || 'Reguler'}</span></p>
                 </div>
-
                 <div className="flex items-center space-x-2 bg-emerald-950/50 border border-emerald-800 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold">
                   <Clock className="w-3.5 h-3.5" />
                   <span>Status: {trackingData.summary?.status}</span>
                 </div>
               </div>
 
-              <div className="bg-[#0f172a] p-4 rounded-2xl space-y-1 text-xs border border-gray-800">
-                <div className="font-bold text-white flex justify-between">
-                  <span>Penerima: {trackingData.detail?.receiver || '-'}</span>
-                  <span className="text-slate-400 font-normal">Pengirim: {trackingData.detail?.shipper || '-'}</span>
-                </div>
-                <p className="text-slate-300 flex items-start gap-1 pt-1">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                  <span>Tujuan: {trackingData.detail?.destination || '-'}</span>
-                </p>
-              </div>
-
               <div className="space-y-4 pt-2">
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Riwayat Perjalanan (Live API)</h4>
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Riwayat Perjalanan Kurir</h4>
                 <div className="border-l-2 border-emerald-500 ml-3 pl-6 space-y-6 text-xs relative">
                   {trackingData.history?.map((item: any, idx: number) => (
                     <div key={idx} className="relative">
                       <span className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-4 border-[#1e293b] ${idx === 0 ? 'bg-emerald-500 shadow-sm' : 'bg-slate-600'}`} />
                       <div className="space-y-0.5">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${idx === 0 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'text-slate-400 bg-[#0f172a]'}`}>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded text-slate-400 bg-[#0f172a]">
                           {item.date}
                         </span>
                         <p className={`font-semibold mt-1 ${idx === 0 ? 'text-white font-bold' : 'text-slate-300'}`}>{item.desc}</p>
@@ -174,7 +238,6 @@ export default function TrackingPage() {
                   ))}
                 </div>
               </div>
-
             </div>
           )}
         </div>

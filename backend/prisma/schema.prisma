@@ -18,15 +18,35 @@ model User {
   orders    Order[]
 }
 
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Brand {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
 model Product {
   id          String      @id @default(uuid())
   name        String
   description String?
-  price       Float
+  price       Int         // Diubah dari Float ke Int (Rupiah)
   stock       Int         @default(0)
-  weight      Float       @default(1.0)
+  weight      Float       @default(1000) // Diseragamkan dalam satuan gram
   image       String?
-  variant     String?
+  variant     String?     
+  categoryId  String?
+  category    Category?   @relation(fields: [categoryId], references: [id])
+  brandId     String?
+  brand       Brand?      @relation(fields: [brandId], references: [id])
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   orderItems  OrderItem[]
@@ -34,13 +54,14 @@ model Product {
 
 model Order {
   id              String      @id @default(uuid())
+  orderCode       String      @unique
   userId          String?
   user            User?       @relation(fields: [userId], references: [id])
   customerName    String
   customerPhone   String
   shippingAddress String
-  totalPrice      Float
-  shippingCost    Float       @default(0)
+  totalPrice      Int         // Diubah ke Int
+  shippingCost    Int         // Diubah ke Int
   trackingNumber  String?
   status          String      @default("PENDING")
   createdAt       DateTime    @default(now())
@@ -49,11 +70,13 @@ model Order {
 }
 
 model OrderItem {
-  id        String   @id @default(uuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id])
-  quantity  Int
-  price     Float
+  id          String   @id @default(uuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  quantity    Int
+  price       Int      // Diubah ke Int
+  productName String   // Salinan nama produk saat dibeli
+  variant     String?  // Salinan varian produk saat dibeli
 }
