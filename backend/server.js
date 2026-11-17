@@ -414,6 +414,26 @@ app.get('/api/track-resi', async (req, res) => {
   }
 });
 
+app.post('/api/admin/login', (req, res) => {
+  const { username, password } = req.body;
+
+  if (
+    username === process.env.ADMIN_USERNAME &&
+    password === process.env.ADMIN_PASSWORD
+  ) {
+    // Kembalikan token sederhana
+    return res.json({
+      success: true,
+      token: 'admin-authenticated-session-token',
+    });
+  }
+
+  return res.status(401).json({
+    success: false,
+    message: 'Username atau password salah!',
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server "Mendadak Outdoor" berjalan di port ${PORT}`);
 });

@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import CatalogContainer from '@/components/CatalogContainer';
-import Toast from '@/components/Toast';
+
 
 async function getProducts() {
   try {
@@ -29,6 +29,7 @@ export default function HomePage() {
           <CatalogWrapper />
         </Suspense>
       </div>
+    
 
       {/* Footer (Server Rendered) */}
       <footer className="bg-[#0f172a] text-gray-400 py-10 px-6 mt-16 border-t border-gray-800 text-sm">
@@ -62,9 +63,9 @@ export default function HomePage() {
           <div>
             <h4 className="text-white font-semibold mb-3 text-xs uppercase tracking-wider">HUBUNGI KAMI</h4>
             <ul className="space-y-2 text-xs text-gray-300">
-              <li>📍 Basecamp Mendadak Outdoor, Bogor, Jawa Barat</li>
+              <li>📍 Jl. Villa Japos Blok H7 No 31, RT.001/RW.015, Paninggilan, Kec. Ciledug, Kota Tangerang Selatan, Banten 15144</li>
               <li>📞 +62 812-2553-0033</li>
-              <li>✉️ info@mendadakoutdoor.com</li>
+              <li>✉️ mendadakoutdoorofficial@gmail.com</li>
             </ul>
           </div>
         </div>

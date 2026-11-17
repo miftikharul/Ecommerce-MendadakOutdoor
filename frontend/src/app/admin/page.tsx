@@ -4,6 +4,15 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function AdminPage() {
+  // Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // Admin Dashboard State
   const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'master'>('products');
   const [products, setProducts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
@@ -29,6 +38,15 @@ export default function AdminPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Cek sesi login saat halaman dimuat
+  useEffect(() => {
+    const token = sessionStorage.getItem('admin_token');
+    if (token === 'admin-authenticated-session-token') {
+      setIsAuthenticated(true);
+    }
+    setIsCheckingAuth(false);
+  }, []);
+
   const fetchData = async () => {
     try {
       const [prodRes, ordRes, catRes, brandRes] = await Promise.all([
@@ -47,9 +65,44 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     setTodayStr(new Date().toISOString().slice(0, 10));
     fetchData();
-  }, [statusFilter, searchQuery]);
+  }, [isAuthenticated, statusFilter, searchQuery]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoginLoading(true);
+
+    try {
+      const res = await fetch('http://localhost:5000/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        sessionStorage.setItem('admin_token', data.token);
+        setIsAuthenticated(true);
+      } else {
+        setLoginError(data.message || 'Username atau password salah!');
+      }
+    } catch (error) {
+      setLoginError('Gagal terhubung ke server backend.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('admin_token');
+    setIsAuthenticated(false);
+    setUsername('');
+    setPassword('');
+  };
 
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,6 +178,71 @@ export default function AdminPage() {
     if (res.ok) fetchData();
   };
 
+  // Mencegah kedipan layar saat mengecek sessionStorage
+  if (isCheckingAuth) {
+    return <main className="min-h-screen bg-[#0b132b]" />;
+  }
+
+  // GERBANG LOGIN ADMIN
+  if (!isAuthenticated) {
+    return (
+      <main className="min-h-screen bg-[#0b132b] text-slate-100 flex items-center justify-center p-6">
+        <div className="w-full max-w-sm bg-[#1e293b] p-6 rounded-xl border border-gray-800 space-y-5 shadow-xl">
+          <div className="text-center space-y-1">
+            <h1 className="text-lg font-bold text-white">🔒 Login Admin</h1>
+            <p className="text-xs text-gray-400">Mendadak Outdoor Store</p>
+          </div>
+
+          {loginError && (
+            <div className="bg-red-500/10 border border-red-500/40 text-red-400 text-xs p-3 rounded-lg text-center">
+              {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-3 text-xs">
+            <div>
+              <label className="block text-gray-400 mb-1">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Masukkan username admin"
+                required
+                className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-gray-400 mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Masukkan password admin"
+                required
+                className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full bg-orange-600 hover:bg-orange-500 py-2.5 rounded-lg font-bold text-white transition mt-2"
+            >
+              {loginLoading ? 'Memverifikasi...' : 'Masuk Panel Admin'}
+            </button>
+          </form>
+
+          <div className="text-center pt-2 border-t border-gray-800">
+            <Link href="/" className="text-xs text-gray-400 hover:text-white">
+              ← Kembali ke Toko
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   const todayOrders = orders.filter(o => o.createdAt && o.createdAt.slice(0, 10) === todayStr);
 
   return (
@@ -137,6 +255,7 @@ export default function AdminPage() {
             <button onClick={() => setActiveTab('orders')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'orders' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Pesanan ({orders.length})</button>
             <button onClick={() => setActiveTab('master')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${activeTab === 'master' ? 'bg-orange-600' : 'bg-[#1e293b]'}`}>Kategori & Brand</button>
             <Link href="/" className="bg-gray-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Toko</Link>
+            <button onClick={handleLogout} className="bg-red-600/80 hover:bg-red-600 px-3 py-1.5 rounded-lg text-xs font-semibold text-white">Keluar</button>
           </div>
         </div>
 
