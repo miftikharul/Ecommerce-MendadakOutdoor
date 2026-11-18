@@ -7,14 +7,25 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Memulai proses seeding database...');
 
-  // 1. Seed Admin dari .env
-  const adminEmail = process.env.ADMIN_USERNAME || 'admin@mendadakoutdoor.com';
-  const adminPasswordPlain = process.env.ADMIN_PASSWORD || 'mendadakoutdoor123';
+  // 1. Validasi ketat: Wajib mengambil dari .env tanpa nilai cadangan (*fallback*)
+  const adminEmail = process.env.ADMIN_USERNAME;
+  const adminPasswordPlain = process.env.ADMIN_PASSWORD;
+
+  if (!adminEmail || !adminPasswordPlain) {
+    console.error('❌ Error: ADMIN_USERNAME atau ADMIN_PASSWORD belum diatur di file .env!');
+    process.exit(1);
+  }
+
   const hashedPassword = await bcrypt.hash(adminPasswordPlain, 10);
 
+  // 2. Upsert admin dengan memperbarui password dan data jika .env berubah
   await prisma.user.upsert({
     where: { email: adminEmail },
-    update: {},
+    update: {
+      password: hashedPassword,
+      name: 'Super Admin Mendadak Outdoor',
+      role: 'ADMIN',
+    },
     create: {
       email: adminEmail,
       password: hashedPassword,
@@ -22,9 +33,9 @@ async function main() {
       role: 'ADMIN',
     },
   });
-  console.log('✅ Akun Admin berhasil disiapkan.');
+  console.log('✅ Akun Admin berhasil disiapkan dan diperbarui.');
 
-  // 2. Seed Kategori Master
+  // 3. Seed Kategori Master
   const categories = ['Tenda', 'Aksesoris', 'Celana', 'Kompor', 'Meja', 'Lampu'];
   for (const catName of categories) {
     await prisma.category.upsert({
@@ -35,7 +46,7 @@ async function main() {
   }
   console.log('✅ Kategori master berhasil dimasukkan.');
 
-  // 3. Seed Brand Master
+  // 4. Seed Brand Master
   const brands = ['MobiGarden', 'Naturehike', 'Kailas', 'Eiger', 'Consina'];
   for (const brandName of brands) {
     await prisma.brand.upsert({

@@ -50,7 +50,7 @@ const upload = multer({
   }
 });
 
-// ==================== ZOD VALIDATION SCHEMAS (P1 - Zod 4 error.issues) ====================
+// ==================== ZOD VALIDATION SCHEMAS ====================
 const checkoutSchema = z.object({
   customerName: z.string().min(1, 'Nama wajib diisi'),
   customerPhone: z.string().regex(/^[0-9+\-\s]+$/, 'Nomor WhatsApp harus berupa angka atau format yang valid'),
@@ -65,6 +65,19 @@ const checkoutSchema = z.object({
   serviceType: z.string().min(1, 'Jenis layanan kurir wajib diisi')
 });
 
+// ==================== AUTH MIDDLEWARES ====================
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Akses ditolak. Token tidak ditemukan.' });
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: 'Token tidak valid atau kedaluwarsa.' });
+    req.user = user;
+    next();
+  });
+};
+
 const verifyAdmin = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -72,7 +85,6 @@ const verifyAdmin = (req, res, next) => {
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ error: 'Token tidak valid.' });
-    if (user.role !== 'ADMIN') return res.status(403).json({ error: 'Akses khusus Admin.' });
     req.user = user;
     next();
   });
@@ -212,7 +224,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// ==================== MANAJEMEN PESANAN & STOK (Poin 13) ====================
+// ==================== MANAJEMEN PESANAN & STOK ====================
 app.get('/api/orders', verifyAdmin, async (req, res) => {
   try {
     const { status, search } = req.query;
@@ -292,7 +304,7 @@ app.put('/api/orders/:id/status', verifyAdmin, async (req, res) => {
   }
 });
 
-// ==================== PRODUK (Poin 9, 14, 15) ====================
+// ==================== PRODUK ====================
 app.get('/api/products', async (req, res) => {
   try {
     const products = await prisma.product.findMany({
@@ -321,7 +333,6 @@ app.get('/api/products/:id', async (req, res) => {
   }
 });
 
-// DIPERBAIKI: Menangkap categoryId dan brandId dengan aman
 app.post('/api/products', verifyAdmin, upload.array('images', 5), async (req, res) => {
   try {
     const { name, description, price, stock, weight, variant, categoryId, brandId } = req.body;
@@ -419,7 +430,22 @@ app.post('/api/categories', verifyAdmin, async (req, res) => {
     const newCategory = await prisma.category.create({ data: { name } });
     res.status(201).json(newCategory);
   } catch (error) {
-    res.status(500).json({ error: 'Gagal menambah kategori.' });
+    console.error("Error create category:", error);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: 'Kategori dengan nama tersebut sudah ada!' });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/categories/:id', verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.category.delete({ where: { id } });
+    res.json({ message: 'Kategori berhasil dihapus!' });
+  } catch (error) {
+    console.error("Delete category error:", error);
+    res.status(500).json({ error: 'Gagal menghapus kategori.' });
   }
 });
 
@@ -438,7 +464,22 @@ app.post('/api/brands', verifyAdmin, async (req, res) => {
     const newBrand = await prisma.brand.create({ data: { name } });
     res.status(201).json(newBrand);
   } catch (error) {
-    res.status(500).json({ error: 'Gagal menambah brand.' });
+    console.error("Error create brand:", error);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: 'Brand dengan nama tersebut sudah ada!' });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/brands/:id', verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.brand.delete({ where: { id } });
+    res.json({ message: 'Brand berhasil dihapus!' });
+  } catch (error) {
+    console.error("Delete brand error:", error);
+    res.status(500).json({ error: 'Gagal menghapus brand.' });
   }
 });
 
@@ -521,24 +562,46 @@ app.get('/api/track-resi', async (req, res) => {
   }
 });
 
+// ==================== LACAK LOKAL (Dua Input Wajib & Filter Data Aman) ====================
 app.get('/api/orders/track-local', async (req, res) => {
   try {
-    const { query } = req.query;
-    if (!query) return res.status(400).json({ error: 'Masukkan kode pesanan atau nomor WhatsApp.' });
+    const { query, phone } = req.query;
+    
+    if (!query || !phone || !query.trim() || !phone.trim()) {
+      return res.status(400).json({ error: 'Kode pesanan dan nomor WhatsApp wajib diisi lengkap.' });
+    }
 
     const orders = await prisma.order.findMany({
       where: {
-        OR: [
-          { orderCode: { contains: String(query), mode: 'insensitive' } },
-          { trackingNumber: { contains: String(query), mode: 'insensitive' } },
-          { customerPhone: { contains: String(query), mode: 'insensitive' } }
-        ]
+        orderCode: query.trim(),
+        customerPhone: phone.trim()
       },
-      include: { items: true },
+      include: { 
+        items: {
+          select: {
+            productName: true,
+            quantity: true,
+            price: true,
+            variant: true
+          }
+        } 
+      },
       orderBy: { createdAt: 'desc' }
     });
 
-    res.json(orders);
+    const sanitizedOrders = orders.map(order => ({
+      id: order.id,
+      orderCode: order.orderCode,
+      customerName: order.customerName,
+      status: order.status,
+      trackingNumber: order.trackingNumber || '-',
+      shippingCost: order.shippingCost,
+      totalPrice: order.totalPrice,
+      createdAt: order.createdAt,
+      items: order.items
+    }));
+
+    res.json(sanitizedOrders);
   } catch (error) {
     console.error('Track local error:', error);
     res.status(500).json({ error: 'Gagal mencari data pesanan.' });

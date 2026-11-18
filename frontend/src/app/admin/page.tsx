@@ -24,7 +24,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [todayStr, setTodayStr] = useState('');
 
-  // Toast Notifikasi State (Poin 22)
+  // Toast Notifikasi State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -52,7 +52,7 @@ export default function AdminPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // State Input Resi per Order (Poin 19)
+  // State Input Resi per Order
   const [resiInputs, setResiInputs] = useState<{ [key: string]: string }>({});
 
   // Helper untuk mendapatkan Header berisikan JWT Token
@@ -76,16 +76,18 @@ export default function AdminPage() {
     try {
       const headers = getAuthHeaders();
       const [prodRes, ordRes, catRes, brandRes] = await Promise.all([
-        fetch(`${API_URL}/api/products`, { headers }),
-        fetch(`${API_URL}/api/orders?status=${statusFilter}&search=${searchQuery}`, { headers }),
+        fetch(`${API_URL}/api/products`, { headers }).catch(() => ({ ok: false })),
+        fetch(`${API_URL}/api/orders?status=${statusFilter}&search=${searchQuery}`, { headers }).catch(() => ({ ok: false })),
         fetch(`${API_URL}/api/categories`, { headers }).catch(() => ({ ok: false })),
         fetch(`${API_URL}/api/brands`, { headers }).catch(() => ({ ok: false }))
       ]);
-      if (prodRes.ok) {
+
+      if (prodRes.ok && 'json' in prodRes) {
         const prodData = await prodRes.json();
         setProducts(prodData);
       }
-      if (ordRes.ok) {
+
+      if (ordRes.ok && 'json' in ordRes) {
         const ordData = await ordRes.json();
         setOrders(ordData);
         const initialResi: { [key: string]: string } = {};
@@ -94,6 +96,7 @@ export default function AdminPage() {
         });
         setResiInputs(initialResi);
       }
+
       if (catRes.ok && 'json' in catRes) setCategories(await catRes.json());
       if (brandRes.ok && 'json' in brandRes) setBrands(await brandRes.json());
     } catch (error) {
@@ -184,18 +187,24 @@ export default function AdminPage() {
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategoryName) return;
-    const res = await fetch(`${API_URL}/api/categories`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      },
-      body: JSON.stringify({ name: newCategoryName })
-    });
-    if (res.ok) {
-      setNewCategoryName('');
-      fetchData();
-      showToast('Kategori berhasil ditambahkan!');
+    try {
+      const res = await fetch(`${API_URL}/api/categories`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ name: newCategoryName })
+      });
+      if (res.ok) {
+        setNewCategoryName('');
+        fetchData();
+        showToast('Kategori berhasil ditambahkan!');
+      } else {
+        showToast('Gagal menambahkan kategori.');
+      }
+    } catch (error) {
+      showToast('Gagal terhubung ke server.');
     }
   };
 
@@ -214,18 +223,24 @@ export default function AdminPage() {
   const handleAddBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBrandName) return;
-    const res = await fetch(`${API_URL}/api/brands`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      },
-      body: JSON.stringify({ name: newBrandName })
-    });
-    if (res.ok) {
-      setNewBrandName('');
-      fetchData();
-      showToast('Brand berhasil ditambahkan!');
+    try {
+      const res = await fetch(`${API_URL}/api/brands`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ name: newBrandName })
+      });
+      if (res.ok) {
+        setNewBrandName('');
+        fetchData();
+        showToast('Brand berhasil ditambahkan!');
+      } else {
+        showToast('Gagal menambahkan brand.');
+      }
+    } catch (error) {
+      showToast('Gagal terhubung ke server.');
     }
   };
 
