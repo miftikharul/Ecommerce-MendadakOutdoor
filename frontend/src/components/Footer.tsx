@@ -11,7 +11,7 @@ export default function Footer() {
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
             <div className="bg-white px-4 py-2 rounded-xl inline-block mb-3 shadow-md">
-               <img src="logo.jpeg" alt="Mendadak Outdoor" className="h-9 w-auto object-contain" />
+               <img src="/logo.jpeg" alt="Mendadak Outdoor" className="h-9 w-auto object-contain" />
             </div>
             <p className="text-xs text-gray-400">
               Solusi praktis perlengkapan mendaki, kemping, dan petualangan outdoor dengan kualitas peralatan terjamin standar ekspedisi.

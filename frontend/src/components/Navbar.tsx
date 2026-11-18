@@ -9,9 +9,9 @@ export default function Navbar({ selectedCategory, onSelectCategory, searchQuery
         
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <div className="bg-white px-4 py-2 rounded-xl inline-block mb-3 shadow-md">
-            <img src="logo.jpeg" alt="Mendadak Outdoor" className="h-9 w-auto object-contain" />
-        </div>
+          <div className="bg-white px-4 py-2 rounded-xl inline-flex items-center shadow-md">
+            <img src="/logo.jpeg" alt="Mendadak Outdoor" className="h-9 w-auto object-contain" />
+          </div>
         </Link>
 
         {/* Live Search Bar */}

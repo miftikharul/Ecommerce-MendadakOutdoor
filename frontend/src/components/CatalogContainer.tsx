@@ -1,16 +1,20 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Navbar from '@/components/Navbar';
-import ProductGrid from '@/components/ProductGrid';
-import Toast from '@/components/Toast';
+import { useState } from "react";
+import Navbar from "@/components/Navbar";
+import ProductGrid from "@/components/ProductGrid";
+import Toast from "@/components/Toast";
 
-export default function CatalogContainer({ initialProducts }: { initialProducts: any[] }) {
-  const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
-  const [selectedBrand, setSelectedBrand] = useState<string>('Semua');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [priceRange, setPriceRange] = useState<string>('semua');
-  const [sortBy, setSortBy] = useState<string>('terbaru');
+export default function CatalogContainer({
+  initialProducts,
+}: {
+  initialProducts: any[];
+}) {
+  const [selectedCategory, setSelectedCategory] = useState<string>("Semua");
+  const [selectedBrand, setSelectedBrand] = useState<string>("Semua");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [priceRange, setPriceRange] = useState<string>("semua");
+  const [sortBy, setSortBy] = useState<string>("terbaru");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 8;
 
@@ -27,7 +31,7 @@ export default function CatalogContainer({ initialProducts }: { initialProducts:
   const brandSet = new Set<string>();
 
   initialProducts.forEach((p: any) => {
-    const cat = p.variant || p.category?.name || p.category || 'Standard';
+    const cat = p.variant || p.category?.name || p.category || "Standard";
     categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
     if (p.brand) brandSet.add(p.brand);
   });
@@ -35,21 +39,27 @@ export default function CatalogContainer({ initialProducts }: { initialProducts:
 
   // Filter Produk
   const filteredProducts = initialProducts.filter((p: any) => {
-    const cat = p.variant || p.category?.name || p.category || 'Standard';
-    const matchesCategory = selectedCategory === 'Semua' || cat === selectedCategory;
-    const matchesBrand = selectedBrand === 'Semua' || p.brand === selectedBrand;
-    
+    const cat = p.variant || p.category?.name || p.category || "Standard";
+    const matchesCategory =
+      selectedCategory === "Semua" || cat === selectedCategory;
+    const matchesBrand = selectedBrand === "Semua" || p.brand === selectedBrand;
+
     const query = searchQuery.toLowerCase();
-    const matchesSearch = 
-      p.name.toLowerCase().includes(query) || 
+    const matchesSearch =
+      // Contoh perbaikan di src/components/CatalogContainer.tsx
+      p.name.toLowerCase().includes(query) ||
       (p.description && p.description.toLowerCase().includes(query)) ||
-      (p.brand && p.brand.toLowerCase().includes(query));
+      (p.brand &&
+        (typeof p.brand === "string"
+          ? p.brand.toLowerCase().includes(query)
+          : p.brand.name && p.brand.name.toLowerCase().includes(query)));
 
     let matchesPrice = true;
     const price = Number(p.price || 0);
-    if (priceRange === 'dibawah-100k') matchesPrice = price < 100000;
-    else if (priceRange === '100k-500k') matchesPrice = price >= 100000 && price <= 500000;
-    else if (priceRange === 'diatas-500k') matchesPrice = price > 500000;
+    if (priceRange === "dibawah-100k") matchesPrice = price < 100000;
+    else if (priceRange === "100k-500k")
+      matchesPrice = price >= 100000 && price <= 500000;
+    else if (priceRange === "diatas-500k") matchesPrice = price > 500000;
 
     return matchesCategory && matchesBrand && matchesSearch && matchesPrice;
   });
@@ -61,45 +71,64 @@ export default function CatalogContainer({ initialProducts }: { initialProducts:
     const dateA = new Date(a.createdAt || 0).getTime();
     const dateB = new Date(b.createdAt || 0).getTime();
 
-    if (sortBy === 'termurah') return priceA - priceB;
-    if (sortBy === 'termahal') return priceB - priceA;
+    if (sortBy === "termurah") return priceA - priceB;
+    if (sortBy === "termahal") return priceB - priceA;
     return dateB - dateA;
   });
 
   // Pagination
   const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedProducts = sortedProducts.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedProducts = sortedProducts.slice(
+    startIndex,
+    startIndex + itemsPerPage,
+  );
 
   return (
     <div className="space-y-6">
       {/* Navbar dengan Live Search */}
-      <Navbar 
-        selectedCategory={selectedCategory} 
-        onSelectCategory={(cat: string) => { setSelectedCategory(cat); setCurrentPage(1); }} 
+      <Navbar
+        selectedCategory={selectedCategory}
+        onSelectCategory={(cat: string) => {
+          setSelectedCategory(cat);
+          setCurrentPage(1);
+        }}
         searchQuery={searchQuery}
-        onSearchChange={(val: string) => { setSearchQuery(val); setCurrentPage(1); }}
+        onSearchChange={(val: string) => {
+          setSearchQuery(val);
+          setCurrentPage(1);
+        }}
       />
 
       {/* Panel Filter & Pencarian */}
       <div className="bg-[#1C2541]/40 p-5 rounded-2xl border border-slate-800 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="text-[11px] font-bold text-slate-400 block mb-1">Cari Produk</label>
-            <input 
-              type="text" 
-              placeholder="Cari tenda, kompor, carrier..." 
+            <label className="text-[11px] font-bold text-slate-400 block mb-1">
+              Cari Produk
+            </label>
+            <input
+              type="text"
+              placeholder="Cari tenda, kompor, carrier..."
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full bg-[#0B132B] text-white placeholder-slate-400 text-xs px-4 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-orange-500"
             />
           </div>
 
           <div>
-            <label className="text-[11px] font-bold text-slate-400 block mb-1">Rentang Harga</label>
+            <label className="text-[11px] font-bold text-slate-400 block mb-1">
+              Rentang Harga
+            </label>
             <select
               value={priceRange}
-              onChange={(e) => { setPriceRange(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => {
+                setPriceRange(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full bg-[#0B132B] text-white text-xs px-4 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-orange-500 cursor-pointer"
             >
               <option value="semua">Semua Harga</option>
@@ -110,10 +139,15 @@ export default function CatalogContainer({ initialProducts }: { initialProducts:
           </div>
 
           <div>
-            <label className="text-[11px] font-bold text-slate-400 block mb-1">Urutkan Berdasarkan</label>
+            <label className="text-[11px] font-bold text-slate-400 block mb-1">
+              Urutkan Berdasarkan
+            </label>
             <select
               value={sortBy}
-              onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full bg-[#0B132B] text-white text-xs px-4 py-2.5 rounded-xl border border-slate-700 focus:outline-none focus:border-orange-500 cursor-pointer"
             >
               <option value="terbaru">Terbaru</option>
@@ -125,18 +159,26 @@ export default function CatalogContainer({ initialProducts }: { initialProducts:
 
         {/* Kategori Horizontal */}
         <div className="pt-3 border-t border-slate-800/80 flex items-center space-x-2 overflow-x-auto pb-1">
-          <span className="text-[11px] font-bold text-slate-400 shrink-0">Kategori:</span>
-          <button 
-            onClick={() => { setSelectedCategory('Semua'); setCurrentPage(1); }}
-            className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${selectedCategory === 'Semua' ? 'bg-orange-500 text-white shadow-md' : 'bg-[#0B132B] text-slate-400 hover:text-white border border-slate-800'}`}
+          <span className="text-[11px] font-bold text-slate-400 shrink-0">
+            Kategori:
+          </span>
+          <button
+            onClick={() => {
+              setSelectedCategory("Semua");
+              setCurrentPage(1);
+            }}
+            className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${selectedCategory === "Semua" ? "bg-orange-500 text-white shadow-md" : "bg-[#0B132B] text-slate-400 hover:text-white border border-slate-800"}`}
           >
             Semua ({initialProducts.length})
           </button>
           {categories.map((cat) => (
-            <button 
+            <button
               key={cat}
-              onClick={() => { setSelectedCategory(cat); setCurrentPage(1); }}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${selectedCategory === cat ? 'bg-orange-500 text-white shadow-md' : 'bg-[#0B132B] text-slate-400 hover:text-white border border-slate-800'}`}
+              onClick={() => {
+                setSelectedCategory(cat);
+                setCurrentPage(1);
+              }}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${selectedCategory === cat ? "bg-orange-500 text-white shadow-md" : "bg-[#0B132B] text-slate-400 hover:text-white border border-slate-800"}`}
             >
               {cat} ({categoryCounts[cat]})
             </button>
@@ -146,16 +188,21 @@ export default function CatalogContainer({ initialProducts }: { initialProducts:
 
       <div className="flex justify-between items-center border-b border-slate-800 pb-3">
         <div>
-          <h2 className="text-xl font-black text-white">Katalog Peralatan Lapangan</h2>
-          <p className="text-xs text-slate-400">Pilih perlengkapan terbaik untuk kenyamanan petualanganmu.</p>
+          <h2 className="text-xl font-black text-white">
+            Katalog Peralatan Lapangan
+          </h2>
+          <p className="text-xs text-slate-400">
+            Pilih perlengkapan terbaik untuk kenyamanan petualanganmu.
+          </p>
         </div>
         <span className="text-xs font-bold text-slate-400">
-          Menampilkan {paginatedProducts.length} dari {sortedProducts.length} produk
+          Menampilkan {paginatedProducts.length} dari {sortedProducts.length}{" "}
+          produk
         </span>
       </div>
 
       {/* Grid Produk */}
-      <ProductGrid 
+      <ProductGrid
         loading={false}
         paginatedProducts={paginatedProducts}
         sortedProducts={sortedProducts}
