@@ -10,6 +10,8 @@ import Link from 'next/link';
 import { ShoppingBag, Heart, ArrowLeft, ShieldCheck, Truck, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 function ProductDetailContent() {
   const params = useParams();
   const router = useRouter();
@@ -26,11 +28,10 @@ function ProductDetailContent() {
   useEffect(() => {
     if (!productId) return;
 
-    fetch(`http://localhost:5000/api/products/${productId}`)
+    fetch(`${API_URL}/api/products/${productId}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success || data.id) {
-          // Menyesuaikan jika data dibungkus dalam key 'data' atau langsung object produknya
           const productData = data.data || data;
           setProduct(productData);
           if (productData.variants && productData.variants.length > 0) {
@@ -103,13 +104,13 @@ function ProductDetailContent() {
             
             {product.image ? (
               <img 
-                src={product.image.startsWith('http') ? product.image : `http://localhost:5000${product.image}`} 
+                src={product.image.startsWith('http') ? product.image : `${API_URL}${product.image}`} 
                 alt={product.name} 
                 className="w-full h-full object-cover"
               />
             ) : product.images && product.images.length > 0 ? (
               <img 
-                src={product.images[0].startsWith('http') ? product.images[0] : `http://localhost:5000${product.images[0]}`} 
+                src={product.images[0].startsWith('http') ? product.images[0] : `${API_URL}${product.images[0]}`} 
                 alt={product.name} 
                 className="w-full h-full object-cover"
               />
@@ -190,16 +191,15 @@ function ProductDetailContent() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => {
-                  // Kirim object data produk secara eksplisit agar tertangkap sempurna oleh CartContext
                   addToCart({
                     id: product.id,
                     name: product.name,
                     price: product.price,
                     weight: product.weight || 1000,
                     image: product.image 
-                      ? (product.image.startsWith('http') ? product.image : `http://localhost:5000${product.image}`)
+                      ? (product.image.startsWith('http') ? product.image : `${API_URL}${product.image}`)
                       : (product.images && product.images.length > 0 
-                          ? (product.images[0].startsWith('http') ? product.images[0] : `http://localhost:5000${product.images[0]}`) 
+                          ? (product.images[0].startsWith('http') ? product.images[0] : `${API_URL}${product.images[0]}`) 
                           : ''),
                     variant: selectedVariant || 'Standard',
                     quantity: quantity

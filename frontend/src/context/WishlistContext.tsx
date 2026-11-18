@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface WishlistContextType {
   wishlist: any[];
@@ -14,14 +14,33 @@ const WishlistContext = createContext<WishlistContextType | undefined>(undefined
 export function WishlistProvider({ children }: { children: React.ReactNode }) {
   const [wishlist, setWishlist] = useState<any[]>([]);
 
+  // 1. Ambil data tersimpan dari localStorage saat pertama kali aplikasi dimuat
+  useEffect(() => {
+    const savedWishlist = localStorage.getItem('mendadak_outdoor_wishlist');
+    if (savedWishlist) {
+      try {
+        setWishlist(JSON.parse(savedWishlist));
+      } catch (err) {
+        console.error('Gagal memparsing wishlist dari localStorage:', err);
+      }
+    }
+  }, []);
+
+  // 2. Fungsi toggle yang memperbarui state SEKALIGUS menyimpan ke localStorage
   const toggleWishlist = (product: any) => {
     setWishlist((prev) => {
       const exists = prev.find((item) => item.id === product.id);
+      let updatedList = [];
+
       if (exists) {
-        return prev.filter((item) => item.id !== product.id);
+        updatedList = prev.filter((item) => item.id !== product.id);
       } else {
-        return [...prev, product];
+        updatedList = [...prev, product];
       }
+
+      // Simpan permanen ke localStorage
+      localStorage.setItem('mendadak_outdoor_wishlist', JSON.stringify(updatedList));
+      return updatedList;
     });
   };
 

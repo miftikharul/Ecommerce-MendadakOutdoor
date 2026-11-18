@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Toast from '@/components/Toast';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export default function AdminPage() {
   // Auth State
@@ -20,6 +23,14 @@ export default function AdminPage() {
   const [brands, setBrands] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [todayStr, setTodayStr] = useState('');
+
+  // Toast Notifikasi State (Poin 22)
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // Form Produk State
   const [name, setName] = useState('');
@@ -40,6 +51,9 @@ export default function AdminPage() {
   // Filter Pesanan State
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // State Input Resi per Order (Poin 19)
+  const [resiInputs, setResiInputs] = useState<{ [key: string]: string }>({});
 
   // Helper untuk mendapatkan Header berisikan JWT Token
   const getAuthHeaders = () => {
@@ -62,13 +76,24 @@ export default function AdminPage() {
     try {
       const headers = getAuthHeaders();
       const [prodRes, ordRes, catRes, brandRes] = await Promise.all([
-        fetch('http://localhost:5000/api/products', { headers }),
-        fetch(`http://localhost:5000/api/orders?status=${statusFilter}&search=${searchQuery}`, { headers }),
-        fetch('http://localhost:5000/api/categories', { headers }).catch(() => ({ ok: false })),
-        fetch('http://localhost:5000/api/brands', { headers }).catch(() => ({ ok: false }))
+        fetch(`${API_URL}/api/products`, { headers }),
+        fetch(`${API_URL}/api/orders?status=${statusFilter}&search=${searchQuery}`, { headers }),
+        fetch(`${API_URL}/api/categories`, { headers }).catch(() => ({ ok: false })),
+        fetch(`${API_URL}/api/brands`, { headers }).catch(() => ({ ok: false }))
       ]);
-      if (prodRes.ok) setProducts(await prodRes.json());
-      if (ordRes.ok) setOrders(await ordRes.json());
+      if (prodRes.ok) {
+        const prodData = await prodRes.json();
+        setProducts(prodData);
+      }
+      if (ordRes.ok) {
+        const ordData = await ordRes.json();
+        setOrders(ordData);
+        const initialResi: { [key: string]: string } = {};
+        ordData.forEach((o: any) => {
+          initialResi[o.id] = o.trackingNumber || '';
+        });
+        setResiInputs(initialResi);
+      }
       if (catRes.ok && 'json' in catRes) setCategories(await catRes.json());
       if (brandRes.ok && 'json' in brandRes) setBrands(await brandRes.json());
     } catch (error) {
@@ -89,7 +114,7 @@ export default function AdminPage() {
     setLoginLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -100,6 +125,7 @@ export default function AdminPage() {
       if (res.ok && data.token) {
         sessionStorage.setItem('admin_token', data.token);
         setIsAuthenticated(true);
+        showToast('Berhasil masuk ke Panel Admin!');
       } else {
         setLoginError(data.error || 'Email atau password salah!');
       }
@@ -115,6 +141,7 @@ export default function AdminPage() {
     setIsAuthenticated(false);
     setEmail('');
     setPassword('');
+    showToast('Berhasil keluar sesi admin.');
   };
 
   const handleProductSubmit = async (e: React.FormEvent) => {
@@ -132,7 +159,10 @@ export default function AdminPage() {
       if (brandId) formData.append('brandId', brandId);
       if (imageFile) formData.append('images', imageFile);
 
-      const url = editingId ? `http://localhost:5000/api/products/${editingId}` : 'http://localhost:5000/api/products';
+      const url = editingId 
+        ? `${API_URL}/api/products/${editingId}` 
+        : `${API_URL}/api/products`;
+      
       const res = await fetch(url, { 
         method: editingId ? 'PUT' : 'POST', 
         headers: getAuthHeaders(),
@@ -140,11 +170,11 @@ export default function AdminPage() {
       });
 
       if (res.ok) {
-        alert(editingId ? 'Produk diperbarui!' : 'Produk ditambahkan!');
+        showToast(editingId ? 'Produk berhasil diperbarui!' : 'Produk baru berhasil ditambahkan!');
         setName(''); setDescription(''); setPrice(''); setStock(''); setWeight('1000'); setCategoryId(''); setBrandId(''); setImageFile(null); setEditingId(null);
         fetchData();
       } else {
-        alert('Gagal menyimpan produk.');
+        showToast('Gagal menyimpan produk.');
       }
     } finally {
       setLoading(false);
@@ -154,7 +184,7 @@ export default function AdminPage() {
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategoryName) return;
-    const res = await fetch('http://localhost:5000/api/categories', {
+    const res = await fetch(`${API_URL}/api/categories`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -165,23 +195,26 @@ export default function AdminPage() {
     if (res.ok) {
       setNewCategoryName('');
       fetchData();
-      alert('Kategori berhasil ditambahkan!');
+      showToast('Kategori berhasil ditambahkan!');
     }
   };
 
   const handleDeleteCategory = async (id: string, name: string) => {
     if (!confirm(`Hapus kategori "${name}"?`)) return;
-    const res = await fetch(`http://localhost:5000/api/categories/${id}`, {
+    const res = await fetch(`${API_URL}/api/categories/${id}`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
-    if (res.ok) fetchData();
+    if (res.ok) {
+      fetchData();
+      showToast('Kategori berhasil dihapus.');
+    }
   };
 
   const handleAddBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBrandName) return;
-    const res = await fetch('http://localhost:5000/api/brands', {
+    const res = await fetch(`${API_URL}/api/brands`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -192,32 +225,37 @@ export default function AdminPage() {
     if (res.ok) {
       setNewBrandName('');
       fetchData();
-      alert('Brand berhasil ditambahkan!');
+      showToast('Brand berhasil ditambahkan!');
     }
   };
 
   const handleDeleteBrand = async (id: string, name: string) => {
     if (!confirm(`Hapus brand "${name}"?`)) return;
-    const res = await fetch(`http://localhost:5000/api/brands/${id}`, {
+    const res = await fetch(`${API_URL}/api/brands/${id}`, {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
-    if (res.ok) fetchData();
+    if (res.ok) {
+      fetchData();
+      showToast('Brand berhasil dihapus.');
+    }
   };
 
   const handleDeleteProduct = async (id: string, name: string) => {
     if (!confirm(`Hapus produk "${name}"?`)) return;
-    const res = await fetch(`http://localhost:5000/api/products/${id}`, { 
+    const res = await fetch(`${API_URL}/api/products/${id}`, { 
       method: 'DELETE',
       headers: getAuthHeaders()
     });
-    if (res.ok) fetchData();
+    if (res.ok) {
+      fetchData();
+      showToast('Produk berhasil dihapus.');
+    }
   };
 
-  const handleUpdateOrderStatus = async (orderId: string, status: string, currentResi: string) => {
-    const trackingNumber = prompt('Masukkan Nomor Resi Pengiriman (AWB):', currentResi || '');
-    if (trackingNumber === null) return;
-    const res = await fetch(`http://localhost:5000/api/orders/${orderId}/status`, {
+  const handleUpdateOrderStatus = async (orderId: string, status: string) => {
+    const trackingNumber = resiInputs[orderId] || '';
+    const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
       method: 'PUT',
       headers: { 
         'Content-Type': 'application/json',
@@ -225,7 +263,12 @@ export default function AdminPage() {
       },
       body: JSON.stringify({ status, trackingNumber })
     });
-    if (res.ok) fetchData();
+    if (res.ok) {
+      fetchData();
+      showToast(`Status pesanan diperbarui ke ${status}!`);
+    } else {
+      showToast('Gagal memperbarui status pesanan.');
+    }
   };
 
   if (isCheckingAuth) {
@@ -288,6 +331,8 @@ export default function AdminPage() {
             </Link>
           </div>
         </div>
+
+        {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
       </main>
     );
   }
@@ -398,16 +443,34 @@ export default function AdminPage() {
 
             <div className="space-y-3">
               {orders.map((o: any) => (
-                <div key={o.id} className="bg-[#0f172a] p-4 rounded-xl border border-gray-800 space-y-2">
+                <div key={o.id} className="bg-[#0f172a] p-4 rounded-xl border border-gray-800 space-y-3">
                   <div className="flex justify-between font-bold">
                     <span className="text-orange-400">{o.orderCode}</span>
                     <span className="text-yellow-400">{o.status}</span>
                   </div>
                   <p className="text-gray-300">Pembeli: {o.customerName} ({o.customerPhone}) | Total: Rp {Number(o.totalPrice).toLocaleString('id-ID')}</p>
-                  <p className="text-gray-400 text-[11px]">Resi Kurir (AWB): <strong className="text-emerald-400 font-mono">{o.trackingNumber || 'Belum diinput'}</strong></p>
-                  <div className="flex gap-2 pt-2 border-t border-gray-800 flex-wrap">
+                  
+                  {/* Form Input Resi Pengiriman */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-gray-800">
+                    <input 
+                      type="text"
+                      value={resiInputs[o.id] ?? ''}
+                      onChange={(e) => setResiInputs({ ...resiInputs, [o.id]: e.target.value })}
+                      placeholder="Masukkan No. Resi (AWB)..."
+                      className="flex-1 bg-[#1e293b] text-white px-3 py-1.5 rounded border border-gray-700 text-xs focus:outline-none focus:border-orange-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-1 flex-wrap items-center">
+                    <span className="text-gray-400 text-[11px] mr-1">Ubah Status:</span>
                     {['PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED'].map(st => (
-                      <button key={st} onClick={() => handleUpdateOrderStatus(o.id, st, o.trackingNumber)} className="bg-gray-800 hover:bg-gray-700 px-2.5 py-1 rounded text-[10px] cursor-pointer">{st}</button>
+                      <button 
+                        key={st} 
+                        onClick={() => handleUpdateOrderStatus(o.id, st)} 
+                        className={`px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer transition ${o.status === st ? 'bg-orange-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}
+                      >
+                        {st}
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -472,6 +535,11 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      {/* Komponen Toast Notifikasi */}
+      {toastMessage && (
+        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+      )}
     </main>
   );
 

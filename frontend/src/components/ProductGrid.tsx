@@ -1,17 +1,20 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useWishlist } from "@/context/WishlistContext";
+import { useCart } from "@/context/CartContext";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 interface ProductGridProps {
-  products?: any[]; // Untuk yang dikirim dari CatalogContainer
-  loading?: boolean; // Opsional
-  paginatedProducts?: any[]; // Untuk yang dikirim dari page.tsx lama
-  sortedProducts?: any[]; // Opsional
-  totalPages?: number; // Opsional
-  currentPage?: number; // Opsional
-  setCurrentPage?: (page: number) => void; // Opsional
+  products?: any[];
+  loading?: boolean;
+  paginatedProducts?: any[];
+  sortedProducts?: any[];
+  totalPages?: number;
+  currentPage?: number;
+  setCurrentPage?: (page: number) => void;
 }
 
 export default function ProductGrid({
@@ -24,50 +27,39 @@ export default function ProductGrid({
   setCurrentPage,
 }: ProductGridProps) {
   const router = useRouter();
+  const { toggleWishlist, isWishlisted } = useWishlist();
+  const { addToCart } = useCart();
 
-  // Ambil data produk dari mana saja yang tersedia
   const displayProducts = paginatedProducts || products || [];
   const totalCount = sortedProducts
     ? sortedProducts.length
     : displayProducts.length;
 
-  // Helper untuk mendapatkan URL gambar yang aman
   const getProductImage = (product: any) => {
     const img = product.image || (product.images && product.images[0]);
     if (!img) return "";
-    return img.startsWith("http") ? img : `http://localhost:5000${img}`;
+    return img.startsWith("http") ? img : `${API_URL}${img}`;
   };
 
-  // Fungsi Tambah ke Keranjang
   const handleAddToCart = (product: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const existingCart = JSON.parse(localStorage.getItem("cart") || "[]");
-    const itemIndex = existingCart.findIndex(
-      (item: any) => item.id === product.id,
-    );
-
     const imageUrl = getProductImage(product);
+    
+    // Menggunakan fungsi addToCart dari CartContext yang sudah ada
+    addToCart({
+      id: product.id,
+      name: product.name,
+      price: Number(product.price),
+      weight: Number(product.weight || 1000),
+      image: imageUrl,
+      quantity: 1,
+      variant: product.variant || "Standard",
+    });
 
-    if (itemIndex > -1) {
-      existingCart[itemIndex].quantity += 1;
-    } else {
-      existingCart.push({
-        id: product.id,
-        name: product.name,
-        price: Number(product.price),
-        weight: Number(product.weight || 1000),
-        image: imageUrl,
-        quantity: 1,
-        variant: product.variant || "Standard",
-      });
-    }
-
-    localStorage.setItem("cart", JSON.stringify(existingCart));
     alert(`🛒 Berhasil memasukkan "${product.name}" ke keranjang!`);
   };
 
-  // Fungsi Beli Langsung (Checkout)
   const handleDirectCheckout = (product: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -87,29 +79,11 @@ export default function ProductGrid({
     router.push("/checkout");
   };
 
-  // Fungsi Simpan ke Wishlist
   const handleToggleWishlist = (product: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const existingWishlist = JSON.parse(
-      localStorage.getItem("wishlist") || "[]",
-    );
-    const isExist = existingWishlist.some(
-      (item: any) => item.id === product.id,
-    );
-
-    let updatedWishlist = [];
-    if (isExist) {
-      updatedWishlist = existingWishlist.filter(
-        (item: any) => item.id !== product.id,
-      );
-      alert(`💔 "${product.name}" dihapus dari Wishlist.`);
-    } else {
-      updatedWishlist = [...existingWishlist, product];
-      alert(`❤️ Berhasil menyimpan "${product.name}" ke Wishlist!`);
-    }
-
-    localStorage.setItem("wishlist", JSON.stringify(updatedWishlist));
+    // Menggunakan toggleWishlist dari WishlistContext agar langsung sinkron dengan halaman /wishlist
+    toggleWishlist(product);
   };
 
   if (loading) {
@@ -148,27 +122,35 @@ export default function ProductGrid({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {displayProducts.map((product: any) => {
             const displayImg = getProductImage(product);
+            const isFav = isWishlisted(product.id);
+
             return (
-              <Link
-                href={`/product/${product.id}`}
+              <div
                 key={product.id}
-                className="bg-[#1e293b] rounded-xl overflow-hidden shadow-sm hover:shadow-md transition border border-gray-800 flex flex-col group relative"
+                className="bg-[#1e293b] rounded-xl overflow-hidden shadow-sm hover:shadow-md transition border border-gray-800 flex flex-col relative"
               >
-                {/* Tombol Wishlist di pojok kanan atas gambar */}
+                {/* Tombol Wishlist Dinamis (Warna merah jika sudah di-wishlist) */}
                 <button
+                  type="button"
                   onClick={(e) => handleToggleWishlist(product, e)}
-                  className="absolute top-3 right-3 z-10 bg-[#0f172a]/80 hover:bg-[#0f172a] text-white p-2 rounded-full shadow border border-gray-700 transition cursor-pointer"
+                  className="absolute top-3 right-3 z-30 bg-[#0f172a]/90 hover:bg-[#0f172a] p-2 rounded-full shadow border border-gray-700 transition cursor-pointer"
                   title="Simpan ke Wishlist"
                 >
-                  ❤️
+                  <span className={isFav ? "text-red-500" : "text-gray-400"}>
+                    {isFav ? "❤️" : "🤍"}
+                  </span>
                 </button>
 
-                <div className="h-52 bg-[#0f172a] relative overflow-hidden">
+                {/* Bagian Gambar (Klik untuk ke Detail) */}
+                <div
+                  onClick={() => router.push(`/product/${product.id}`)}
+                  className="h-52 bg-[#0f172a] relative overflow-hidden cursor-pointer"
+                >
                   {displayImg ? (
                     <img
                       src={displayImg}
                       alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      className="w-full h-full object-cover hover:scale-105 transition duration-300"
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full text-gray-500 text-xs">
@@ -179,7 +161,10 @@ export default function ProductGrid({
 
                 <div className="p-4 flex flex-col flex-grow justify-between">
                   <div>
-                    <h3 className="font-semibold text-white group-hover:text-orange-400 transition line-clamp-1 text-base">
+                    <h3
+                      onClick={() => router.push(`/product/${product.id}`)}
+                      className="font-semibold text-white hover:text-orange-400 transition line-clamp-1 text-base cursor-pointer"
+                    >
                       {product.name}
                     </h3>
                     <p className="text-xs text-gray-400 mt-1 line-clamp-2">
@@ -197,15 +182,17 @@ export default function ProductGrid({
                     </span>
                   </div>
 
-                  {/* Tombol Tambah ke Keranjang & Beli Langsung */}
-                  <div className="grid grid-cols-2 gap-2 mt-4">
+                  {/* Tombol Keranjang & Beli Langsung */}
+                  <div className="grid grid-cols-2 gap-2 mt-4 z-20">
                     <button
+                      type="button"
                       onClick={(e) => handleAddToCart(product, e)}
                       className="bg-gray-800 hover:bg-gray-700 text-white text-xs font-semibold py-2 rounded-lg border border-gray-700 transition text-center cursor-pointer"
                     >
                       🛒 +Keranjang
                     </button>
                     <button
+                      type="button"
                       onClick={(e) => handleDirectCheckout(product, e)}
                       className="bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold py-2 rounded-lg transition text-center shadow cursor-pointer"
                     >
@@ -213,13 +200,13 @@ export default function ProductGrid({
                     </button>
                   </div>
                 </div>
-              </Link>
+              </div>
             );
           })}
         </div>
       )}
 
-      {/* Pagination Controls */}
+      {/* Pagination */}
       {totalPages && totalPages > 1 && setCurrentPage && (
         <div className="flex justify-center items-center space-x-2 pt-8">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
