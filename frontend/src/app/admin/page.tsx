@@ -313,7 +313,7 @@ export default function AdminPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@mendadakoutdoor.com"
+                placeholder="email"
                 required
                 className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white focus:outline-none focus:border-orange-500"
               />
