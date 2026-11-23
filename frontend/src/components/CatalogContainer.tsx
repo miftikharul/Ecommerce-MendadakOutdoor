@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import ProductGrid from "@/components/ProductGrid";
 import Toast from "@/components/Toast";
+
+interface CategoryItem {
+  id: string;
+  name: string;
+}
 
 export default function CatalogContainer({
   initialProducts,
@@ -16,6 +21,7 @@ export default function CatalogContainer({
   const [priceRange, setPriceRange] = useState<string>("semua");
   const [sortBy, setSortBy] = useState<string>("terbaru");
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [apiCategories, setApiCategories] = useState<CategoryItem[]>([]);
   const itemsPerPage = 8;
 
   // State untuk Toast Notifikasi
@@ -26,33 +32,69 @@ export default function CatalogContainer({
     setTimeout(() => setToastMessage(null), 3000); // Hilang otomatis dalam 3 detik
   };
 
-  // Ekstrak kategori & brand unik
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const baseUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+        const res = await fetch(`${baseUrl}/api/categories`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setApiCategories(data);
+        }
+      } catch (err) {
+        console.error("Gagal memuat kategori:", err);
+      }
+    };
+
+    fetchCategories();
+  }, []);
+
+  const getProductCategoryName = (p: any): string => {
+    if (typeof p.category === "string" && p.category.trim() !== "") {
+      return p.category.trim();
+    }
+    if (p.category?.name && String(p.category.name).trim() !== "") {
+      return String(p.category.name).trim();
+    }
+    return "Tanpa Kategori";
+  };
+
+  // Hitung jumlah produk per kategori & ekstrak brand unik
   const categoryCounts: { [key: string]: number } = {};
   const brandSet = new Set<string>();
 
   initialProducts.forEach((p: any) => {
-    const cat = p.variant || p.category?.name || p.category || "Standard";
+    const cat = getProductCategoryName(p);
     categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
-    if (p.brand) brandSet.add(p.brand);
+    if (p.brand) {
+      const brandName = typeof p.brand === "string" ? p.brand : p.brand.name;
+      if (brandName) brandSet.add(brandName);
+    }
   });
-  const categories = Object.keys(categoryCounts);
+
+  const categories =
+    apiCategories.length > 0
+      ? apiCategories.map((c) => c.name)
+      : Object.keys(categoryCounts);
 
   // Filter Produk
   const filteredProducts = initialProducts.filter((p: any) => {
-    const cat = p.variant || p.category?.name || p.category || "Standard";
+    const cat = getProductCategoryName(p);
     const matchesCategory =
       selectedCategory === "Semua" || cat === selectedCategory;
-    const matchesBrand = selectedBrand === "Semua" || p.brand === selectedBrand;
+
+    const productBrand =
+      typeof p.brand === "string" ? p.brand : p.brand?.name || "";
+    const matchesBrand =
+      selectedBrand === "Semua" || productBrand === selectedBrand;
 
     const query = searchQuery.toLowerCase();
     const matchesSearch =
-      // Contoh perbaikan di src/components/CatalogContainer.tsx
       p.name.toLowerCase().includes(query) ||
       (p.description && p.description.toLowerCase().includes(query)) ||
-      (p.brand &&
-        (typeof p.brand === "string"
-          ? p.brand.toLowerCase().includes(query)
-          : p.brand.name && p.brand.name.toLowerCase().includes(query)));
+      (productBrand && productBrand.toLowerCase().includes(query));
 
     let matchesPrice = true;
     const price = Number(p.price || 0);
@@ -180,7 +222,7 @@ export default function CatalogContainer({
               }}
               className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${selectedCategory === cat ? "bg-orange-500 text-white shadow-md" : "bg-[#0B132B] text-slate-400 hover:text-white border border-slate-800"}`}
             >
-              {cat} ({categoryCounts[cat]})
+              {cat} ({categoryCounts[cat] || 0})
             </button>
           ))}
         </div>

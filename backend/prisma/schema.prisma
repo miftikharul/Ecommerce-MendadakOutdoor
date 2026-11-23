@@ -42,6 +42,7 @@ model Product {
   stock       Int         @default(0)
   weight      Float       @default(1000) // Diseragamkan dalam satuan gram
   image       String?
+  images      String[]    @default([]) // Daftar foto produk (maks. 5)
   variant     String?     
   categoryId  String?
   category    Category?   @relation(fields: [categoryId], references: [id])
@@ -64,6 +65,7 @@ model Order {
   shippingCost    Int         // Diubah ke Int
   trackingNumber  String?
   status          String      @default("PENDING")
+  stockDeducted   Boolean     @default(false)
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   items           OrderItem[]

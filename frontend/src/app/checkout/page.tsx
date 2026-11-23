@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import Toast from '@/components/Toast';
 import { fetchApi } from '@/utils/api';
 
 export default function CheckoutPage() {
@@ -14,7 +15,7 @@ export default function CheckoutPage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  
+
   const [searchLocation, setSearchLocation] = useState('');
   const [locationResults, setLocationResults] = useState<any[]>([]);
   const [selectedDestination, setSelectedDestination] = useState<any>(null);
@@ -26,6 +27,13 @@ export default function CheckoutPage() {
   const [loadingOngkir, setLoadingOngkir] = useState(false);
   const [loading, setLoading] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState<any>(null);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   useEffect(() => {
     setIsMounted(true);
@@ -93,11 +101,11 @@ export default function CheckoutPage() {
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cartItems.length === 0) {
-      alert('Keranjang belanja kosong!');
+      showToast('Keranjang belanja kosong!');
       return;
     }
     if (!selectedDestination || shippingCost <= 0) {
-      alert('Pilih lokasi tujuan dan pastikan ongkos kirim sudah terhitung!');
+      showToast('Pilih lokasi tujuan dan pastikan ongkos kirim sudah terhitung!');
       return;
     }
 
@@ -140,11 +148,11 @@ export default function CheckoutPage() {
         setCartItems([]);
         setConfirmedOrder(orderData);
       } else {
-        alert(`Gagal membuat pesanan: ${responseData.error || 'Terjadi kesalahan di server.'}`);
+        showToast(`Gagal membuat pesanan: ${responseData.error || 'Terjadi kesalahan di server.'}`);
       }
     } catch (error) {
       console.error('Error checkout:', error);
-      alert('Terjadi kesalahan jaringan ke backend server.');
+      showToast('Terjadi kesalahan jaringan ke backend server.');
     } finally {
       setLoading(false);
     }
@@ -206,6 +214,9 @@ export default function CheckoutPage() {
           </div>
         </div>
         <Footer />
+        {toastMessage && (
+          <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+        )}
       </main>
     );
   }
@@ -227,10 +238,10 @@ export default function CheckoutPage() {
               <form onSubmit={handleCheckoutSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-300 mb-1">Nama Lengkap</label>
-                  <input 
-                    type="text" 
-                    value={name} 
-                    onChange={(e) => setName(e.target.value)} 
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     required
                     placeholder="Masukkan nama penerima..."
                     className="w-full bg-[#0f172a] text-white text-xs px-4 py-2.5 rounded-xl border border-gray-700 focus:outline-none focus:border-orange-500"
@@ -239,10 +250,10 @@ export default function CheckoutPage() {
 
                 <div>
                   <label className="block text-xs font-medium text-gray-300 mb-1">Nomor WhatsApp (Aktif)</label>
-                  <input 
-                    type="tel" 
-                    value={phone} 
-                    onChange={(e) => setPhone(e.target.value)} 
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
                     required
                     placeholder="Contoh: 081234567890"
                     className="w-full bg-[#0f172a] text-white text-xs px-4 py-2.5 rounded-xl border border-gray-700 focus:outline-none focus:border-orange-500"
@@ -251,7 +262,7 @@ export default function CheckoutPage() {
 
                 <div className="relative">
                   <label className="block text-xs font-medium text-gray-300 mb-1">Cari Kecamatan / Kota Tujuan</label>
-                  <input 
+                  <input
                     type="text"
                     value={searchLocation}
                     onChange={(e) => {
@@ -288,9 +299,9 @@ export default function CheckoutPage() {
 
                 <div>
                   <label className="block text-xs font-medium text-gray-300 mb-1">Alamat Detail (Jalan, Nomor Rumah, RT/RW)</label>
-                  <textarea 
-                    value={address} 
-                    onChange={(e) => setAddress(e.target.value)} 
+                  <textarea
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
                     required
                     rows={2}
                     placeholder="Patokan rumah, nama jalan..."
@@ -300,8 +311,8 @@ export default function CheckoutPage() {
 
                 <div>
                   <label className="block text-xs font-medium text-gray-300 mb-1">Pilih Kurir Ekspedisi</label>
-                  <select 
-                    value={courier} 
+                  <select
+                    value={courier}
                     onChange={(e) => {
                       const newCourier = e.target.value;
                       setCourier(newCourier);
@@ -344,8 +355,8 @@ export default function CheckoutPage() {
                 </div>
 
                 {/* Poin 11: Tombol Buat Pesanan dikunci jika ongkir belum valid / 0 */}
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={loading || !selectedDestination || shippingCost <= 0}
                   className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-xs transition shadow cursor-pointer mt-4"
                 >
@@ -356,7 +367,7 @@ export default function CheckoutPage() {
 
             <div className="bg-[#1e293b] p-6 rounded-2xl border border-gray-800 shadow-md h-fit space-y-4">
               <h2 className="text-sm font-bold text-white border-b border-gray-800 pb-3 uppercase tracking-wider">Ringkasan Belanja</h2>
-              
+
               <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
                 {cartItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center text-xs">
@@ -392,6 +403,9 @@ export default function CheckoutPage() {
         </div>
       </div>
       <Footer />
+      {toastMessage && (
+        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+      )}
     </main>
   );
 }

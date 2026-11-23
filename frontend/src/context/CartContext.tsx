@@ -2,22 +2,32 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-interface CartItem {
-  id: any;
+export interface CartProductInput {
+  id: string | number;
   name: string;
   price: number;
-  quantity: number;
+  quantity?: number;
   variant?: string;
   weight?: number;
   image?: string;
 }
 
+export interface CartItem {
+  id: string | number;
+  name: string;
+  price: number;
+  quantity: number;
+  variant: string;
+  weight: number;
+  image: string;
+}
+
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (product: any, quantity?: number, variant?: string) => void;
-  buyNow: (product: any, quantity?: number, variant?: string) => void;
-  removeFromCart: (id: any, variant?: string) => void;
-  updateQuantity: (id: any, quantity: number, variant?: string) => void;
+  addToCart: (product: CartProductInput, quantity?: number, variant?: string) => void;
+  buyNow: (product: CartProductInput, quantity?: number, variant?: string) => void;
+  removeFromCart: (id: string | number, variant?: string) => void;
+  updateQuantity: (id: string | number, quantity: number, variant?: string) => void;
   clearCart: () => void;
   totalItems: number;
   totalPrice: number;
@@ -31,7 +41,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const savedCart = localStorage.getItem('cart');
       if (savedCart) {
         try {
-          return JSON.parse(savedCart);
+          const parsed: unknown = JSON.parse(savedCart);
+          return Array.isArray(parsed) ? (parsed as CartItem[]) : [];
         } catch (e) {
           console.error('Gagal memparsing cart dari localStorage', e);
         }
@@ -40,58 +51,71 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return [];
   });
 
-  // Simpan keranjang ke localStorage setiap kali ada perubahan
   useEffect(() => {
     localStorage.setItem('cart', JSON.stringify(cart));
   }, [cart]);
 
-  const addToCart = (product: any, quantity = 1, variant = 'Standard') => {
+  const addToCart = (product: CartProductInput, quantity = 1, variant = 'Standard') => {
+    const resolvedVariant = variant || product.variant || 'Standard';
+    const resolvedQty = typeof quantity === 'number' && !Number.isNaN(quantity) ? Math.max(1, quantity) : 1;
+    const resolvedPrice = typeof product.price === 'number' && !Number.isNaN(product.price) ? product.price : 0;
+    const resolvedWeight = typeof product.weight === 'number' && !Number.isNaN(product.weight) ? product.weight : 1000;
+
     setCart((prev) => {
-      const existingIndex = prev.findIndex((item) => item.id === product.id && item.variant === variant);
+      const existingIndex = prev.findIndex(
+        (item) => item.id === product.id && item.variant === resolvedVariant
+      );
       if (existingIndex > -1) {
         const updated = [...prev];
-        // Salin objek state ({ ...item }) guna menghindari duplikasi nilai saat dev mode
         updated[existingIndex] = {
           ...updated[existingIndex],
-          quantity: updated[existingIndex].quantity + quantity,
+          quantity: updated[existingIndex].quantity + resolvedQty,
         };
         return updated;
-      } else {
-        return [...prev, { 
-          id: product.id, 
-          name: product.name, 
-          price: product.price, 
-          quantity, 
-          variant, 
-          weight: product.weight || 1.0,
-          image: product.image || ''
-        }];
       }
+
+      return [
+        ...prev,
+        {
+          id: product.id,
+          name: product.name,
+          price: resolvedPrice,
+          quantity: resolvedQty,
+          variant: resolvedVariant,
+          weight: resolvedWeight,
+          image: product.image || '',
+        },
+      ];
     });
   };
 
-  // Fungsi khusus untuk Beli Cepat
-  const buyNow = (product: any, quantity = 1, variant = 'Standard') => {
-    setCart([{
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      quantity,
-      variant,
-      weight: product.weight || 1.0,
-      image: product.image || ''
-    }]);
+  const buyNow = (product: CartProductInput, quantity = 1, variant = 'Standard') => {
+    const resolvedVariant = variant || product.variant || 'Standard';
+    const resolvedQty = typeof quantity === 'number' && !Number.isNaN(quantity) ? Math.max(1, quantity) : 1;
+    const resolvedPrice = typeof product.price === 'number' && !Number.isNaN(product.price) ? product.price : 0;
+    const resolvedWeight = typeof product.weight === 'number' && !Number.isNaN(product.weight) ? product.weight : 1000;
+
+    setCart([
+      {
+        id: product.id,
+        name: product.name,
+        price: resolvedPrice,
+        quantity: resolvedQty,
+        variant: resolvedVariant,
+        weight: resolvedWeight,
+        image: product.image || '',
+      },
+    ]);
   };
 
-  // Ubah logika hapus menggunakan kunci kombinasi id + variant
-  const removeFromCart = (id: any, variant = 'Standard') => {
+  const removeFromCart = (id: string | number, variant = 'Standard') => {
     setCart((prev) => prev.filter((item) => !(item.id === id && item.variant === variant)));
   };
 
-  // Ubah logika update jumlah menggunakan kunci kombinasi id + variant serta salin objek state
-  const updateQuantity = (id: any, quantity: number, variant = 'Standard') => {
-    setCart((prev) => 
-      prev.map((item) => (item.id === id && item.variant === variant ? { ...item, quantity } : item))
+  const updateQuantity = (id: string | number, quantity: number, variant = 'Standard') => {
+    const safeQty = typeof quantity === 'number' && !Number.isNaN(quantity) ? Math.max(0, quantity) : 1;
+    setCart((prev) =>
+      prev.map((item) => (item.id === id && item.variant === variant ? { ...item, quantity: safeQty } : item))
     );
   };
 
@@ -103,7 +127,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, buyNow, removeFromCart, updateQuantity, clearCart, totalItems, totalPrice }}>
+    <CartContext.Provider
+      value={{ cart, addToCart, buyNow, removeFromCart, updateQuantity, clearCart, totalItems, totalPrice }}
+    >
       {children}
     </CartContext.Provider>
   );

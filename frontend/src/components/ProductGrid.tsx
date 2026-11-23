@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWishlist } from "@/context/WishlistContext";
 import { useCart } from "@/context/CartContext";
+import Toast from "@/components/Toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -15,6 +16,7 @@ interface ProductGridProps {
   totalPages?: number;
   currentPage?: number;
   setCurrentPage?: (page: number) => void;
+  onShowToast?: (msg: string) => void;
 }
 
 export default function ProductGrid({
@@ -25,10 +27,21 @@ export default function ProductGrid({
   totalPages,
   currentPage,
   setCurrentPage,
+  onShowToast,
 }: ProductGridProps) {
   const router = useRouter();
   const { toggleWishlist, isWishlisted } = useWishlist();
   const { addToCart } = useCart();
+  const [localToast, setLocalToast] = useState<string | null>(null);
+
+  const triggerToast = (msg: string) => {
+    if (onShowToast) {
+      onShowToast(msg);
+      return;
+    }
+    setLocalToast(msg);
+    setTimeout(() => setLocalToast(null), 3000);
+  };
 
   const displayProducts = paginatedProducts || products || [];
   const totalCount = sortedProducts
@@ -45,7 +58,7 @@ export default function ProductGrid({
     e.preventDefault();
     e.stopPropagation();
     const imageUrl = getProductImage(product);
-    
+
     // Menggunakan fungsi addToCart dari CartContext yang sudah ada
     addToCart({
       id: product.id,
@@ -57,7 +70,7 @@ export default function ProductGrid({
       variant: product.variant || "Standard",
     });
 
-    alert(`🛒 Berhasil memasukkan "${product.name}" ke keranjang!`);
+    triggerToast(`🛒 Berhasil memasukkan "${product.name}" ke keranjang!`);
   };
 
   const handleDirectCheckout = (product: any, e: React.MouseEvent) => {
@@ -223,6 +236,10 @@ export default function ProductGrid({
             </button>
           ))}
         </div>
+      )}
+
+      {!onShowToast && localToast && (
+        <Toast message={localToast} onClose={() => setLocalToast(null)} />
       )}
     </div>
   );

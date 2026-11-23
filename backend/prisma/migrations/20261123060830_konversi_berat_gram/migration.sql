@@ -1,0 +1,1 @@
+UPDATE "Product" SET weight = weight * 1000 WHERE weight < 10;

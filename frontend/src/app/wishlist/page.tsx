@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import Toast from '@/components/Toast';
 import { useWishlist } from '@/context/WishlistContext';
 import { useCart } from '@/context/CartContext';
 import Link from 'next/link';
@@ -13,6 +14,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 export default function WishlistPage() {
   const { wishlist, toggleWishlist } = useWishlist();
   const { addToCart } = useCart();
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // Helper aman untuk mendeteksi gambar dari berbagai format object produk
   const getProductImage = (product: any) => {
@@ -63,13 +70,13 @@ export default function WishlistPage() {
               {wishlist.map((product) => {
                 const displayImg = getProductImage(product);
                 return (
-                  <div 
-                    key={product.id} 
+                  <div
+                    key={product.id}
                     className="bg-[#1e293b] rounded-2xl border border-gray-800 overflow-hidden hover:shadow-lg transition flex flex-col justify-between group"
                   >
                     <div className="relative bg-[#0f172a] h-48 flex items-center justify-center p-4 border-b border-gray-800 overflow-hidden">
-                      <button 
-                        onClick={() => toggleWishlist(product)} 
+                      <button
+                        onClick={() => toggleWishlist(product)}
                         className="absolute top-3 right-3 w-8 h-8 bg-[#1e293b]/95 backdrop-blur rounded-full flex items-center justify-center text-red-500 shadow-sm transition hover:scale-105 border border-gray-700 cursor-pointer z-10"
                         title="Hapus dari Wishlist"
                       >
@@ -77,8 +84,8 @@ export default function WishlistPage() {
                       </button>
 
                       {displayImg ? (
-                        <img 
-                          src={displayImg} 
+                        <img
+                          src={displayImg}
                           alt={product.name}
                           className="w-full h-full object-cover"
                         />
@@ -99,8 +106,8 @@ export default function WishlistPage() {
 
                       <div className="pt-3 border-t border-gray-800 flex items-center justify-between">
                         <p className="text-sm font-black text-orange-400 font-mono">Rp {Number(product.price)?.toLocaleString('id-ID')}</p>
-                        
-                        <button 
+
+                        <button
                           onClick={() => {
                             addToCart({
                               id: product.id,
@@ -111,7 +118,7 @@ export default function WishlistPage() {
                               quantity: 1,
                               variant: product.variant || 'Standard',
                             });
-                            alert(`Berhasil menambahkan ${product.name} ke keranjang!`);
+                            showToast(`Berhasil menambahkan ${product.name} ke keranjang!`);
                           }}
                           className="bg-orange-600 text-white px-3 py-2 rounded-xl text-xs font-medium flex items-center space-x-1 hover:bg-orange-500 transition shadow-sm cursor-pointer"
                           title="Pindahkan ke Keranjang"
@@ -130,6 +137,9 @@ export default function WishlistPage() {
       </div>
 
       <Footer />
+      {toastMessage && (
+        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+      )}
     </main>
   );
 }

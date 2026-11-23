@@ -7,6 +7,17 @@ import Link from 'next/link';
 import { Clock, ArrowLeft, Search } from 'lucide-react';
 import { fetchApi } from '@/utils/api';
 
+const normalizePhoneInput = (raw: string) => {
+  let cleaned = raw.replace(/[\s\-()]/g, '').trim();
+  if (cleaned.startsWith('+')) {
+    cleaned = cleaned.slice(1);
+  }
+  if (cleaned.startsWith('08')) {
+    cleaned = '62' + cleaned.slice(1);
+  }
+  return cleaned;
+};
+
 export default function TrackingPage() {
   const [orderCode, setOrderCode] = useState('');
   const [phone, setPhone] = useState('');
@@ -47,15 +58,17 @@ export default function TrackingPage() {
           setErrorMessage(result.message || 'Resi tidak ditemukan atau ekspedisi tidak sesuai.');
         }
       } else {
+        const normalizedPhone = normalizePhoneInput(phone);
         // Wajib dua input untuk lacak lokal
-        if (!orderCode.trim() || !phone.trim()) {
+        if (!orderCode.trim() || !normalizedPhone) {
           setErrorMessage('Kode Pesanan dan Nomor WhatsApp wajib diisi lengkap.');
           setLoading(false);
           return;
         }
 
-        // PERBAIKAN: Menggunakan parameter 'query' sesuai dengan backend
-        const res = await fetchApi(`/api/orders/track-local?query=${encodeURIComponent(orderCode.trim())}&phone=${encodeURIComponent(phone.trim())}`);
+        const res = await fetchApi(
+          `/api/orders/track-local?query=${encodeURIComponent(orderCode.trim())}&phone=${encodeURIComponent(normalizedPhone)}`
+        );
         const result = await res.json();
 
         if (res.ok) {
