@@ -190,7 +190,7 @@ export default function CheckoutPage() {
               {/* Poin 16: Rekening BCA Asli Toko */}
               <div className="bg-orange-950/30 p-4 rounded-2xl border border-orange-900/50 text-left space-y-2 text-xs">
                 <p className="font-bold text-orange-400">Silakan Transfer Pembayaran ke Rekening Resmi:</p>
-                <p className="text-white font-mono text-sm">BCA: <strong>8830912345</strong> (a.n. PT Mendadak Outdoor Indonesia)</p>
+                <p className="text-white font-mono text-sm">BCA: <strong>7050401027</strong> (a.n. Rosmiyati)</p>
                 <p className="text-slate-400 text-[11px]">Kirimkan bukti transfer beserta kode pesanan melalui WhatsApp admin di bawah.</p>
               </div>
 
