@@ -93,6 +93,20 @@ export default function AdminPage() {
   // State Input Resi per Order
   const [resiInputs, setResiInputs] = useState<{ [key: string]: string }>({});
 
+  useEffect(() => {
+    const savedToken = sessionStorage.getItem('admin_token');
+    if (savedToken) {
+      setIsAuthenticated(true);
+    }
+    setIsCheckingAuth(false);
+
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    setTodayStr(`${yyyy}-${mm}-${dd}`);
+  }, []);
+
   const getAuthHeaders = useCallback((): Record<string, string> => {
     const token = sessionStorage.getItem('admin_token');
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -139,19 +153,19 @@ export default function AdminPage() {
   }, [getAuthHeaders, statusFilter, searchQuery]);
 
   useEffect(() => {
-  if (!isAuthenticated) return;
-  let active = true;
+    if (!isAuthenticated) return;
+    let active = true;
 
-  const load = async () => {
-    if (!active) return;
-    await fetchData();
-  };
+    const load = async () => {
+      if (!active) return;
+      await fetchData();
+    };
 
-  void load();
-  return () => {
-    active = false;
-  };
-}, [isAuthenticated, fetchData]);
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, fetchData]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,6 +184,7 @@ export default function AdminPage() {
       if (res.ok && data.token) {
         sessionStorage.setItem('admin_token', data.token);
         setIsAuthenticated(true);
+        setIsCheckingAuth(false);
         showToast('Berhasil masuk ke Panel Admin!');
       } else {
         setLoginError(data.error || 'Email atau password salah!');
@@ -374,7 +389,11 @@ export default function AdminPage() {
   };
 
   if (isCheckingAuth) {
-    return <main className="min-h-screen bg-[#0b132b]" />;
+    return (
+      <main className="min-h-screen bg-[#0b132b] text-slate-400 flex items-center justify-center text-xs">
+        Memeriksa sesi...
+      </main>
+    );
   }
 
   if (!isAuthenticated) {
@@ -438,7 +457,7 @@ export default function AdminPage() {
     );
   }
 
-  const todayOrders = orders.filter(o => o.createdAt && o.createdAt.slice(0, 10) === todayStr);
+  const todayOrders = orders.filter((o) => o.createdAt && o.createdAt.slice(0, 10) === todayStr);
 
   return (
     <main className="min-h-screen bg-[#0b132b] text-slate-100 p-6 md:p-8">
@@ -462,7 +481,7 @@ export default function AdminPage() {
           </div>
           <div className="bg-[#1e293b] p-4 rounded-xl border border-gray-800">
             <p className="text-[10px] text-gray-400 uppercase">Pending</p>
-            <h3 className="text-lg font-bold text-orange-400">{orders.filter(o => o.status === 'PENDING').length} Pesanan</h3>
+            <h3 className="text-lg font-bold text-orange-400">{orders.filter((o) => o.status === 'PENDING').length} Pesanan</h3>
           </div>
         </div>
 
@@ -482,23 +501,23 @@ export default function AdminPage() {
                 )}
               </div>
               <form onSubmit={handleProductSubmit} className="space-y-3 text-xs">
-                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nama Produk" required className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama Produk" required className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
                 <div className="grid grid-cols-3 gap-3">
-                  <input type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="Harga (Rp)" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
-                  <input type="number" value={stock} onChange={e => setStock(e.target.value)} placeholder="Stok" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
-                  <input type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Berat (gram)" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                  <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Harga (Rp)" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                  <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} placeholder="Stok" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                  <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="Berat (gram)" required className="bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-gray-400 mb-1">Varian</label>
-                    <select value={variant} onChange={e => setVariant(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
-                      {['Standard', 'Aksesoris', 'Tenda', 'Meja', 'Kompor', 'Lampu'].map(v => <option key={v} value={v}>{v}</option>)}
+                    <select value={variant} onChange={(e) => setVariant(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
+                      {['Standard', 'Aksesoris', 'Tenda', 'Meja', 'Kompor', 'Lampu'].map((v) => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-gray-400 mb-1">Kategori</label>
-                    <select value={categoryId} onChange={e => setCategoryId(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
+                    <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
                       <option value="">Pilih Kategori...</option>
                       {categories.map((cat) => (
                         <option key={cat.id} value={cat.id}>{cat.name}</option>
@@ -509,7 +528,7 @@ export default function AdminPage() {
 
                 <div>
                   <label className="block text-gray-400 mb-1">Brand</label>
-                  <select value={brandId} onChange={e => setBrandId(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
+                  <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white">
                     <option value="">Pilih Brand...</option>
                     {brands.map((b) => (
                       <option key={b.id} value={b.id}>{b.name}</option>
@@ -517,7 +536,7 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Deskripsi..." rows={2} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Deskripsi..." rows={2} className="w-full bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
 
                 <div className="space-y-1">
                   <input
@@ -530,7 +549,7 @@ export default function AdminPage() {
                   />
                   {imageFiles.length > 0 && (
                     <p className="text-[11px] text-orange-400">
-                      {imageFiles.length} foto dipilih (maks. {MAX_PRODUCT_IMAGES} file): {imageFiles.map(f => f.name).join(', ')}
+                      {imageFiles.length} foto dipilih (maks. {MAX_PRODUCT_IMAGES} file): {imageFiles.map((f) => f.name).join(', ')}
                     </p>
                   )}
                 </div>
@@ -565,9 +584,9 @@ export default function AdminPage() {
         {activeTab === 'orders' && (
           <div className="bg-[#1e293b] p-5 rounded-xl border border-gray-800 space-y-4 text-xs">
             <div className="flex gap-3">
-              <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Cari kode/nama..." className="flex-1 bg-[#0f172a] p-2 rounded-lg border border-gray-700 text-white" />
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-[#0f172a] p-2 rounded-lg border border-gray-700 text-white cursor-pointer">
-                {['ALL', 'PENDING', 'PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED'].map(s => <option key={s} value={s}>{s}</option>)}
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari kode/nama..." className="flex-1 bg-[#0f172a] p-2 rounded-lg border border-gray-700 text-white" />
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-[#0f172a] p-2 rounded-lg border border-gray-700 text-white cursor-pointer">
+                {['ALL', 'PENDING', 'PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED'].map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
@@ -592,7 +611,7 @@ export default function AdminPage() {
 
                   <div className="flex gap-2 pt-1 flex-wrap items-center">
                     <span className="text-gray-400 text-[11px] mr-1">Ubah Status:</span>
-                    {['PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED'].map(st => (
+                    {['PAID', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED'].map((st) => (
                       <button
                         key={st}
                         onClick={() => handleUpdateOrderStatus(o.id, st)}
@@ -613,7 +632,7 @@ export default function AdminPage() {
             <div className="bg-[#1e293b] p-5 rounded-xl border border-gray-800 space-y-4">
               <h2 className="font-bold uppercase text-white">Kelola Kategori</h2>
               <form onSubmit={handleAddCategory} className="flex gap-2">
-                <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Nama Kategori Baru..." required className="flex-1 bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Nama Kategori Baru..." required className="flex-1 bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
                 <button type="submit" className="bg-orange-600 hover:bg-orange-500 px-4 py-2.5 rounded-lg font-bold text-white cursor-pointer">Tambah</button>
               </form>
               <div className="space-y-2 pt-2 max-h-60 overflow-y-auto">
@@ -638,7 +657,7 @@ export default function AdminPage() {
             <div className="bg-[#1e293b] p-5 rounded-xl border border-gray-800 space-y-4">
               <h2 className="font-bold uppercase text-white">Kelola Brand</h2>
               <form onSubmit={handleAddBrand} className="flex gap-2">
-                <input type="text" value={newBrandName} onChange={e => setNewBrandName(e.target.value)} placeholder="Nama Brand Baru..." required className="flex-1 bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
+                <input type="text" value={newBrandName} onChange={(e) => setNewBrandName(e.target.value)} placeholder="Nama Brand Baru..." required className="flex-1 bg-[#0f172a] p-2.5 rounded-lg border border-gray-700 text-white" />
                 <button type="submit" className="bg-orange-600 hover:bg-orange-500 px-4 py-2.5 rounded-lg font-bold text-white cursor-pointer">Tambah</button>
               </form>
               <div className="space-y-2 pt-2 max-h-60 overflow-y-auto">
